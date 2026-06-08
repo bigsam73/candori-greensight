@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Border Collie face - minimalist style -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4ade80" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#1b5e20" stop-opacity="0.08"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="url(#bgGrad)" stroke="#4ade80" stroke-width="1.5" opacity="0.6"/>
+
+  <!-- Ears (black/dark) -->
+  <ellipse cx="16" cy="18" rx="10" ry="12" fill="#1a1d27" transform="rotate(-15 16 18)"/>
+  <ellipse cx="48" cy="18" rx="10" ry="12" fill="#1a1d27" transform="rotate(15 48 18)"/>
+
+  <!-- Inner ears -->
+  <ellipse cx="16" cy="19" rx="5" ry="7" fill="#3a3550" transform="rotate(-15 16 19)"/>
+  <ellipse cx="48" cy="19" rx="5" ry="7" fill="#3a3550" transform="rotate(15 48 19)"/>
+
+  <!-- Head shape (white center) -->
+  <ellipse cx="32" cy="30" rx="18" ry="20" fill="#e8eaf0"/>
+
+  <!-- Black head markings (symmetrical) -->
+  <path d="M14 22 Q20 18 26 24 Q24 32 18 30 Z" fill="#1a1d27"/>
+  <path d="M50 22 Q44 18 38 24 Q40 32 46 30 Z" fill="#1a1d27"/>
+
+  <!-- White blaze (center stripe) -->
+  <path d="M29 16 Q32 14 35 16 L34 32 Q32 34 30 32 Z" fill="#e8eaf0"/>
+
+  <!-- Eyes -->
+  <ellipse cx="24" cy="28" rx="3.5" ry="3.8" fill="#1a1d27"/>
+  <ellipse cx="40" cy="28" rx="3.5" ry="3.8" fill="#1a1d27"/>
+  <!-- Eye shine -->
+  <circle cx="25.2" cy="26.8" r="1.2" fill="#fff" opacity="0.9"/>
+  <circle cx="41.2" cy="26.8" r="1.2" fill="#fff" opacity="0.9"/>
+  <!-- Iris color (brown) -->
+  <ellipse cx="24" cy="28.5" rx="2" ry="2.2" fill="#5D4037"/>
+  <circle cx="25" cy="27.5" r="0.9" fill="#fff" opacity="0.7"/>
+  <ellipse cx="40" cy="28.5" rx="2" ry="2.2" fill="#5D4037"/>
+  <circle cx="41" cy="27.5" r="0.9" fill="#fff" opacity="0.7"/>
+
+  <!-- Nose -->
+  <ellipse cx="32" cy="37" rx="4" ry="3" fill="#1a1d27"/>
+  <ellipse cx="32" cy="36.2" rx="2.5" ry="1.2" fill="#333" opacity="0.5"/>
+  <!-- Nose shine -->
+  <ellipse cx="31" cy="35.8" rx="1" ry="0.6" fill="#555" opacity="0.6"/>
+
+  <!-- Mouth -->
+  <path d="M32 40 Q29 43 27 42" fill="none" stroke="#1a1d27" stroke-width="1" stroke-linecap="round"/>
+  <path d="M32 40 Q35 43 37 42" fill="none" stroke="#1a1d27" stroke-width="1" stroke-linecap="round"/>
+
+  <!-- Tongue (cute little peek) -->
+  <ellipse cx="32" cy="43" rx="2.5" ry="2" fill="#e57373"/>
+  <ellipse cx="32" cy="42.5" rx="2" ry="1" fill="#ef9a9a"/>
+
+  <!-- Cheek fluff -->
+  <path d="M12 32 Q10 38 16 42 Q20 38 18 34 Z" fill="#e0e0e0" opacity="0.7"/>
+  <path d="M52 32 Q54 38 48 42 Q44 38 46 34 Z" fill="#e0e0e0" opacity="0.7"/>
+
+  <!-- Small leaf/grass accent on head (connects to NDVI/green theme) -->
+  <g transform="translate(42, 12) rotate(20)">
+    <path d="M0 0 Q4 -6 2 -10 Q0 -6 -2 -10 Q-4 -6 0 0" fill="#4ade80" opacity="0.85"/>
+    <line x1="0" y1="0" x2="0" y2="-7" stroke="#2e7d32" stroke-width="0.8"/>
+  </g>
+</svg>

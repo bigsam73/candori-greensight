@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Candori GreenSight - 골프장 NDVI 모니터링 플랫폼</title>
+
+  <!-- Leaflet Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet Draw (영역 마킹용) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <img src="/img/candori.png" alt="Candori" class="logo-collie">
+        <div>
+          <h1 class="logo-text"><span class="logo-candori">Candori</span> GreenSight</h1>
+          <span class="logo-sub">Golf NDVI Monitor</span>
+        </div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-view="dashboard">
+        <span class="material-icons-outlined">dashboard</span>
+        <span>대시보드</span>
+      </a>
+      <a href="#" class="nav-item" data-view="map">
+        <span class="material-icons-outlined">map</span>
+        <span>위성지도</span>
+      </a>
+      <a href="#" class="nav-item" data-view="courses">
+        <span class="material-icons-outlined">sports_golf</span>
+        <span>골프장 관리</span>
+      </a>
+      <a href="#" class="nav-item" data-view="analysis">
+        <span class="material-icons-outlined">analytics</span>
+        <span>NDVI 분석</span>
+      </a>
+      <a href="#" class="nav-item" data-view="compare">
+        <span class="material-icons-outlined">compare</span>
+        <span>비교 분석</span>
+      </a>
+      <a href="#" class="nav-item" data-view="alerts">
+        <span class="material-icons-outlined">notifications</span>
+        <span>알림</span>
+        <span class="badge" id="alertBadge">0</span>
+      </a>
+      <a href="#" class="nav-item" data-view="satellites">
+        <span class="material-icons-outlined">satellite_alt</span>
+        <span>위성 소스</span>
+        <span class="badge" id="satBadge" style="background:var(--accent-blue)">9</span>
+      </a>
+      <a href="#" class="nav-item" data-view="report">
+        <span class="material-icons-outlined">description</span>
+        <span>리포트</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="satellite-status">
+        <div class="status-dot green"></div>
+        <div>
+          <div class="status-label">위성 데이터 소스</div>
+          <div class="status-text" id="sidebarSatCount">9개 위성 연동</div>
+        </div>
+      </div>
+      <div class="sidebar-info">
+        <small id="sidebarSatBest">최고 해상도: 4.77m (Planet NICFI)</small>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <button class="menu-toggle" id="menuToggle">
+        <span class="material-icons-outlined">menu</span>
+      </button>
+      <div class="topbar-title" id="pageTitle">대시보드</div>
+      <div class="topbar-actions">
+        <div class="date-display">
+          <span class="material-icons-outlined">event</span>
+          <span id="currentDate"></span>
+        </div>
+        <button class="btn-icon" id="refreshBtn" title="데이터 새로고침">
+          <span class="material-icons-outlined">refresh</span>
+        </button>
+        <button class="btn-icon notification-btn" id="notifBtn">
+          <span class="material-icons-outlined">notifications_none</span>
+          <span class="notif-dot" id="notifDot"></span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Dashboard View -->
+    <div class="view active" id="view-dashboard">
+      <!-- Summary Cards -->
+      <div class="summary-cards">
+        <div class="card summary-card">
+          <div class="card-icon green">
+            <span class="material-icons-outlined">grass</span>
+          </div>
+          <div class="card-info">
+            <div class="card-value" id="totalCourses">-</div>
+            <div class="card-label">모니터링 골프장</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon blue">
+            <span class="material-icons-outlined">satellite_alt</span>
+          </div>
+          <div class="card-info">
+            <div class="card-value" id="avgNDVI">-</div>
+            <div class="card-label">평균 NDVI</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon orange">
+            <span class="material-icons-outlined">warning_amber</span>
+          </div>
+          <div class="card-info">
+            <div class="card-value" id="alertCount">-</div>
+            <div class="card-label">활성 알림</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon purple">
+            <span class="material-icons-outlined">cloud_queue</span>
+          </div>
+          <div class="card-info">
+            <div class="card-value" id="lastUpdate">-</div>
+            <div class="card-label">최근 업데이트</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Map + Course List -->
+      <div class="dashboard-grid">
+        <div class="card map-card">
+          <div class="card-header">
+            <h3>전국 골프장 NDVI 현황</h3>
+            <div class="card-controls">
+              <select id="mapLayerSelect" class="select-sm">
+                <option value="dark">다크 모드</option>
+                <option value="google-hybrid">Google 하이브리드</option>
+                <option value="google-sat">Google 위성</option>
+                <option value="google-road">Google 일반</option>
+                <option value="satellite">ESRI 위성</option>
+                <option value="osm">OpenStreetMap</option>
+              </select>
+            </div>
+          </div>
+          <div id="dashboardMap" class="map-container"></div>
+          <div class="ndvi-legend">
+            <span class="legend-title">NDVI</span>
+            <div class="legend-gradient"></div>
+            <div class="legend-labels">
+              <span>0.0 나지</span>
+              <span>0.2 스트레스</span>
+              <span>0.4 약한식생</span>
+              <span>0.6 양호</span>
+              <span>0.8 매우건강</span>
+              <span>1.0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card course-list-card">
+          <div class="card-header">
+            <h3>골프장 NDVI 순위</h3>
+            <input type="text" id="courseSearch" class="search-input" placeholder="골프장 검색...">
+          </div>
+          <div class="course-list" id="courseList">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Row -->
+      <div class="charts-grid">
+        <div class="card chart-card">
+          <div class="card-header">
+            <h3>NDVI 추이 (최근 90일)</h3>
+            <select id="trendCourseSelect" class="select-sm">
+              <option value="all">전체 평균</option>
+            </select>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="ndviTrendChart"></canvas>
+          </div>
+        </div>
+        <div class="card chart-card">
+          <div class="card-header">
+            <h3>지역별 NDVI 분포</h3>
+          </div>
+          <div class="chart-wrapper">
+            <canvas id="regionChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map View (Full Screen) -->
+    <div class="view" id="view-map">
+      <div class="map-view-container">
+        <div id="fullMap" class="full-map"></div>
+
+        <!-- Step-based toolbar -->
+        <div class="map-toolbar">
+          <div class="toolbar-group">
+            <label>배경:</label>
+            <select id="fullMapLayer" class="select-sm">
+              <option value="google-hybrid">Google 하이브리드</option>
+              <option value="google-sat">Google 위성</option>
+              <option value="google-road">Google 일반</option>
+              <option value="google-terrain">Google 지형</option>
+              <option value="satellite">ESRI 위성</option>
+              <option value="osm">OpenStreetMap</option>
+              <option value="dark">다크 모드</option>
+            </select>
+          </div>
+          <div class="toolbar-divider"></div>
+          <div class="toolbar-group">
+            <label>1. 골프장:</label>
+            <select id="mapCourseSelect" class="select-sm" style="min-width:160px">
+              <option value="">골프장 선택...</option>
+            </select>
+          </div>
+          <div class="toolbar-group">
+            <label>2. NDVI 소스:</label>
+            <select id="satelliteSourceSelect" class="select-sm">
+              <option value="">전체 (자동)</option>
+            </select>
+          </div>
+          <div class="toolbar-group">
+            <label>오버레이:</label>
+            <select id="overlaySelect" class="select-sm">
+              <option value="none">없음</option>
+              <option value="ndvi" selected>NDVI 히트맵</option>
+              <option value="boundary">구역 경계</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Right side panel: available dates + info -->
+        <div class="map-info-panel" id="mapInfoPanel">
+          <h4 id="mapInfoTitle">골프장을 선택하세요</h4>
+          <div id="mapInfoContent">
+            <div style="text-align:center;padding:20px 0;color:var(--text-muted)">
+              <span class="material-icons-outlined" style="font-size:40px;display:block;margin-bottom:8px">touch_app</span>
+              <div style="font-size:12px">지도에서 골프장 마커를 클릭하거나<br>상단에서 골프장을 선택하세요</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Satellite Sources View -->
+    <div class="view" id="view-satellites">
+      <div class="view-header">
+        <h2>위성 데이터 소스 카탈로그</h2>
+        <div class="header-controls">
+          <select id="satFilterTier" class="select-md">
+            <option value="all">전체</option>
+            <option value="premium">프리미엄 (5m 이하)</option>
+            <option value="recommended">추천 (30m 이하)</option>
+            <option value="standard">표준</option>
+            <option value="basic">기본</option>
+          </select>
+        </div>
+      </div>
+      <div class="satellites-grid" id="satellitesGrid">
+        <!-- Dynamically populated -->
+      </div>
+    </div>
+
+    <!-- Courses View -->
+    <div class="view" id="view-courses">
+      <div class="view-header">
+        <h2>골프장 관리</h2>
+        <button class="btn btn-primary" id="addCourseBtn">
+          <span class="material-icons-outlined">add</span>
+          영역 마킹으로 추가
+        </button>
+      </div>
+      <div class="courses-grid" id="coursesGrid">
+        <!-- Dynamically populated -->
+      </div>
+
+      <!-- Add Course Modal (with map drawing) -->
+      <div class="modal" id="addCourseModal">
+        <div class="modal-content" style="width:900px;max-width:95vw">
+          <div class="modal-header">
+            <h3>신규 골프장 추가 - 지도에서 영역을 그리세요</h3>
+            <button class="btn-icon modal-close">&times;</button>
+          </div>
+          <div style="display:flex;gap:0;height:500px">
+            <!-- Drawing Map -->
+            <div style="flex:1;position:relative">
+              <div id="drawMap" style="width:100%;height:100%"></div>
+              <div style="position:absolute;bottom:8px;left:8px;z-index:1000;background:rgba(30,33,48,0.9);padding:6px 10px;border-radius:6px;font-size:11px;color:var(--text-secondary)">
+                <span class="material-icons-outlined" style="font-size:14px;vertical-align:middle">info</span>
+                도구를 선택하여 골프장 영역을 그리세요 (다각형/사각형)
+              </div>
+            </div>
+            <!-- Form Panel -->
+            <div style="width:280px;border-left:1px solid var(--border-color);overflow-y:auto">
+              <form id="addCourseForm" style="padding:16px">
+                <div class="form-group" style="margin-bottom:10px">
+                  <label>골프장 이름 *</label>
+                  <input type="text" name="name" required placeholder="예: 남서울CC">
+                </div>
+                <div class="form-group" style="margin-bottom:10px">
+                  <label>영문 이름</label>
+                  <input type="text" name="name_en" placeholder="예: Nam Seoul CC">
+                </div>
+                <div class="form-group" style="margin-bottom:10px">
+                  <label>주소</label>
+                  <input type="text" name="address" placeholder="경기도 성남시...">
+                </div>
+                <div class="form-group" style="margin-bottom:10px">
+                  <label>지역</label>
+                  <input type="text" name="region" placeholder="경기">
+                </div>
+                <div class="form-group" style="margin-bottom:10px">
+                  <label>홀 수</label>
+                  <input type="number" name="holes" value="18">
+                </div>
+                <div style="padding:8px;background:var(--bg-primary);border-radius:6px;margin-bottom:10px;font-size:11px">
+                  <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px">마킹된 영역 정보</div>
+                  <div id="drawInfo" style="color:var(--text-muted)">영역을 그려주세요</div>
+                  <input type="hidden" name="lat" id="drawLat">
+                  <input type="hidden" name="lng" id="drawLng">
+                  <input type="hidden" name="boundary" id="drawBoundary">
+                </div>
+                <div style="display:flex;gap:8px">
+                  <button type="button" class="btn btn-secondary modal-close" style="flex:1">취소</button>
+                  <button type="submit" class="btn btn-primary" id="submitCourseBtn" style="flex:1" disabled>추가</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analysis View -->
+    <div class="view" id="view-analysis">
+      <div class="view-header">
+        <h2>NDVI 상세 분석</h2>
+        <div class="header-controls">
+          <select id="analysisCourseSelect" class="select-md">
+            <option value="">골프장 선택...</option>
+          </select>
+          <select id="analysisPeriod" class="select-md">
+            <option value="7">7일</option>
+            <option value="30" selected>30일</option>
+            <option value="90">90일</option>
+            <option value="180">180일</option>
+            <option value="365">1년</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="analysis-content" id="analysisContent">
+        <div class="analysis-placeholder">
+          <span class="material-icons-outlined" style="font-size:64px;color:#ccc">analytics</span>
+          <p>분석할 골프장을 선택하세요</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Compare View -->
+    <div class="view" id="view-compare">
+      <div class="view-header">
+        <h2>골프장 비교 분석</h2>
+        <div class="header-controls">
+          <select id="compareCourses" class="select-md" multiple size="3">
+          </select>
+          <button class="btn btn-primary" id="compareBtn">비교</button>
+        </div>
+      </div>
+      <div id="compareContent">
+        <div class="card chart-card" style="margin-top:16px">
+          <div class="card-header"><h3>NDVI 비교 차트</h3></div>
+          <div class="chart-wrapper" style="height:400px">
+            <canvas id="compareChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alerts View -->
+    <div class="view" id="view-alerts">
+      <div class="view-header">
+        <h2>알림 센터</h2>
+        <div class="header-controls">
+          <select id="alertFilter" class="select-md">
+            <option value="all">전체</option>
+            <option value="critical">긴급</option>
+            <option value="warning">경고</option>
+            <option value="info">정보</option>
+          </select>
+        </div>
+      </div>
+      <div class="alerts-list" id="alertsList">
+        <!-- Dynamically populated -->
+      </div>
+    </div>
+
+    <!-- Report View -->
+    <div class="view" id="view-report">
+      <div class="view-header">
+        <h2>리포트 생성</h2>
+      </div>
+      <div class="card" style="padding:24px;margin-top:16px">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>골프장 선택</label>
+            <select id="reportCourse" class="select-md">
+              <option value="">선택...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>기간</label>
+            <select id="reportPeriod" class="select-md">
+              <option value="7">최근 7일</option>
+              <option value="30" selected>최근 30일</option>
+              <option value="90">최근 90일</option>
+              <option value="180">최근 180일</option>
+              <option value="365">최근 1년</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="generateReportBtn" style="margin-top:16px">
+          <span class="material-icons-outlined">description</span>
+          리포트 생성
+        </button>
+        <div id="reportOutput" style="margin-top:24px"></div>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
