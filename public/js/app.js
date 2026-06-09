@@ -721,82 +721,224 @@ function showSelectedDateDetail(course, record) {
       <div class="detail-value">${record.cloud_cover?.toFixed(1) || 0}%</div>
       <div class="detail-label">위성 소스</div>
       <div class="detail-value">${record.satellite}</div>
-      <div class="detail-label">위치</div>
-      <div class="detail-value">${course.lat?.toFixed(4)}, ${course.lng?.toFixed(4)}</div>
-      <div class="detail-label">골프장</div>
-      <div class="detail-value">${course.name}</div>
     </div>
-    <button class="btn btn-primary btn-sm" style="width:100%;margin-top:10px;justify-content:center" onclick="requestSatelliteImage('${course.id}', '${record.date}', '${record.satellite}')">
-      <span class="material-icons-outlined">satellite</span>
-      이 날짜의 위성 영상 요청
-    </button>
+    <div style="display:flex;gap:6px;margin-top:10px">
+      <button class="btn btn-primary btn-sm" style="flex:1;justify-content:center" onclick="showNDVIOverlay('${course.id}', '${record.date}', '${record.satellite}', ${record.ndvi_mean})">
+        <span class="material-icons-outlined">layers</span>
+        NDVI 지도 보기
+      </button>
+      <button class="btn btn-secondary btn-sm" style="flex:1;justify-content:center" onclick="showSatelliteImageOverlay('${course.id}', '${record.date}', '${record.satellite}')">
+        <span class="material-icons-outlined">satellite</span>
+        실화상 보기
+      </button>
+    </div>
+    <div id="overlayStatus" style="margin-top:6px;font-size:10px;color:var(--text-muted)"></div>
   `;
 
   container.appendChild(detail);
-
-  // Scroll detail into view
   detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  // Auto-show NDVI overlay on date select
+  showNDVIOverlay(course.id, record.date, record.satellite, record.ndvi_mean);
 }
 
-// Global: request satellite image for a specific date
-window.requestSatelliteImage = async function (courseId, date, satellite) {
-  const detail = document.getElementById("selectedDateDetail");
-  if (!detail) return;
+// ── Map Overlay: NDVI 히트맵 ──────────────────────────────────────
 
-  // Add loading indicator to the button
-  const btn = detail.querySelector("button");
-  const origHtml = btn.innerHTML;
-  btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;margin-right:6px"></div> 요청 중...';
-  btn.disabled = true;
+window.showNDVIOverlay = function (courseId, date, satellite, ndviMean) {
+  if (!state.fullMap) return;
+  const course = state.courses.find((c) => c.id === Number(courseId));
+  if (!course) return;
 
-  try {
-    const result = await API.post("/api/ndvi/fetch-satellite", {
-      courseId: Number(courseId),
-      date,
-      satelliteId: satellite === "Sentinel-2" ? "sentinel-2" :
-                   satellite.startsWith("Landsat") ? "landsat-8" :
-                   satellite.startsWith("HLS") ? "hls" :
-                   satellite === "MODIS" ? "modis-250m" : undefined,
+  // Clear previous overlays
+  clearMapOverlays();
+
+  const boundary = course.boundary || [];
+  const fakeRecord = { ndvi_mean: ndviMean, date, satellite };
+  const cells = generateNDVIGrid(course, fakeRecord);
+
+  state._mapOverlayLayer = L.layerGroup();
+
+  // NDVI grid cells
+  cells.forEach((cell) => {
+    const rect = L.rectangle(cell.bounds, {
+      color: "transparent",
+      weight: 0,
+      fillColor: getNDVIColor(cell.ndvi),
+      fillOpacity: 0.6,
     });
+    rect.bindTooltip(
+      `<b>NDVI: ${cell.ndvi.toFixed(3)}</b><br>${getNDVIStatus(cell.ndvi).text}<br>${satellite} | ${date}`,
+      { sticky: true, className: "ndvi-tooltip" }
+    );
+    state._mapOverlayLayer.addLayer(rect);
+  });
 
-    // Build result display
-    let resultHtml = `
-      <div style="margin-top:10px;padding:8px;background:var(--bg-card);border-radius:6px;font-size:11px">
-        <div style="color:var(--accent-green);font-weight:600;margin-bottom:4px">${result.message}</div>
-    `;
-
-    if (result.available_sources) {
-      resultHtml += '<div style="margin-top:6px">';
-      for (const [satId, info] of Object.entries(result.available_sources)) {
-        const sat = state.satellites.find((s) => s.id === satId);
-        const name = sat ? sat.name : satId;
-        const avail = Array.isArray(info) ? info.length > 0 : info?.available;
-        const icon = avail ? "check_circle" : "remove_circle_outline";
-        const clr = avail ? "var(--accent-green)" : "var(--text-muted)";
-        resultHtml += `
-          <div style="display:flex;align-items:center;gap:4px;padding:2px 0">
-            <span class="material-icons-outlined" style="font-size:12px;color:${clr}">${icon}</span>
-            <span style="color:var(--text-secondary)">${name}</span>
-          </div>
-        `;
-      }
-      resultHtml += "</div>";
-    }
-
-    if (result.ndvi_image) {
-      resultHtml += `<img src="${result.ndvi_image}" style="width:100%;margin-top:8px;border-radius:6px">`;
-    }
-
-    resultHtml += "</div>";
-    detail.insertAdjacentHTML("beforeend", resultHtml);
-
-    btn.innerHTML = '<span class="material-icons-outlined">check</span> 완료';
-  } catch (err) {
-    btn.innerHTML = origHtml;
-    btn.disabled = false;
-    console.error("위성 영상 요청 실패:", err);
+  // Boundary outline
+  if (boundary.length >= 3) {
+    L.polygon(boundary, {
+      color: "#fff", weight: 2.5, fillColor: "transparent", fillOpacity: 0, dashArray: "8,4",
+    }).addTo(state._mapOverlayLayer);
   }
+
+  // NDVI legend control on map
+  const legend = L.control({ position: "bottomleft" });
+  legend.onAdd = function () {
+    const div = L.DomUtil.create("div", "ndvi-map-legend");
+    div.innerHTML = `
+      <div style="background:rgba(30,33,48,0.92);padding:8px 10px;border-radius:8px;border:1px solid var(--border-color);font-size:10px;color:#e8eaf0">
+        <div style="font-weight:600;margin-bottom:4px">${satellite} NDVI | ${date}</div>
+        <div style="display:flex;gap:3px;align-items:center">
+          <span style="color:#d32f2f">0.0</span>
+          <div style="width:120px;height:10px;border-radius:5px;background:linear-gradient(to right,#8b0000,#d32f2f,#ff9800,#cddc39,#8bc34a,#4caf50,#388e3c,#1b5e20)"></div>
+          <span style="color:#1b5e20">1.0</span>
+        </div>
+        <div style="margin-top:3px;color:#9ba1b7">평균 NDVI: <b style="color:${getNDVIColor(ndviMean)}">${ndviMean?.toFixed(3)}</b> ${getNDVIStatus(ndviMean).text}</div>
+      </div>
+    `;
+    return div;
+  };
+  legend.addTo(state.fullMap);
+  state._mapLegendControl = legend;
+
+  state._mapOverlayLayer.addTo(state.fullMap);
+
+  // Zoom to course
+  if (boundary.length >= 3) {
+    state.fullMap.fitBounds(L.polygon(boundary).getBounds().pad(0.15));
+  } else {
+    state.fullMap.setView([course.lat, course.lng], 16);
+  }
+
+  const statusEl = document.getElementById("overlayStatus");
+  if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-green)">NDVI 히트맵 표시 중 (${cells.length}개 셀)</span>`;
 };
+
+// ── Map Overlay: 실제 위성 영상 (Sentinel-2 WMS) ──────────────────
+
+window.showSatelliteImageOverlay = function (courseId, date, satellite) {
+  if (!state.fullMap) return;
+  const course = state.courses.find((c) => c.id === Number(courseId));
+  if (!course) return;
+
+  // Clear previous overlays
+  clearMapOverlays();
+
+  const boundary = course.boundary || [];
+  state._mapOverlayLayer = L.layerGroup();
+
+  // Copernicus Sentinel-2 WMTS (무료, 인증 불필요)
+  // True Color (실화상) 타일
+  const s2TrueColor = L.tileLayer.wms(
+    "https://sh.dataspace.copernicus.eu/ogc/wms/ed64bf38-575d-4fee-83d0-59bd0c6f80b3", {
+      layers: "TRUE-COLOR-S2L2A",
+      format: "image/png",
+      transparent: true,
+      time: date,
+      maxcc: 30,
+      maxZoom: 19,
+      attribution: "Copernicus Sentinel-2",
+    }
+  );
+
+  // NDVI 레이어도 추가
+  const s2NDVI = L.tileLayer.wms(
+    "https://sh.dataspace.copernicus.eu/ogc/wms/ed64bf38-575d-4fee-83d0-59bd0c6f80b3", {
+      layers: "NDVI",
+      format: "image/png",
+      transparent: true,
+      time: date,
+      maxcc: 30,
+      maxZoom: 19,
+      attribution: "Copernicus NDVI",
+    }
+  );
+
+  // Add buttons to toggle between true color and NDVI
+  state._mapOverlayLayer.addLayer(s2TrueColor);
+
+  // Boundary outline
+  if (boundary.length >= 3) {
+    L.polygon(boundary, {
+      color: "#4ade80", weight: 2.5, fillColor: "transparent", fillOpacity: 0, dashArray: "8,4",
+    }).addTo(state._mapOverlayLayer);
+  }
+
+  // Toggle control
+  const toggleCtrl = L.control({ position: "topright" });
+  toggleCtrl.onAdd = function () {
+    const div = L.DomUtil.create("div", "sat-image-toggle");
+    div.innerHTML = `
+      <div style="background:rgba(30,33,48,0.92);padding:8px 10px;border-radius:8px;border:1px solid var(--border-color);font-size:11px;color:#e8eaf0">
+        <div style="font-weight:600;margin-bottom:6px">Sentinel-2 | ${date}</div>
+        <div style="display:flex;gap:4px">
+          <button id="btnTrueColor" style="padding:4px 8px;border-radius:4px;border:1px solid var(--accent-green);background:var(--accent-green);color:#0f1117;font-size:10px;cursor:pointer;font-family:inherit">실화상 (RGB)</button>
+          <button id="btnNDVI" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-input);color:#e8eaf0;font-size:10px;cursor:pointer;font-family:inherit">NDVI 영상</button>
+        </div>
+        <div style="margin-top:4px;color:#9ba1b7;font-size:9px">Copernicus Data Space (무료)</div>
+      </div>
+    `;
+    L.DomEvent.disableClickPropagation(div);
+
+    // Attach events after DOM insertion
+    setTimeout(() => {
+      const btnTC = document.getElementById("btnTrueColor");
+      const btnNDVI = document.getElementById("btnNDVI");
+      if (btnTC) btnTC.addEventListener("click", () => {
+        state._mapOverlayLayer.removeLayer(s2NDVI);
+        state._mapOverlayLayer.addLayer(s2TrueColor);
+        btnTC.style.background = "var(--accent-green)"; btnTC.style.color = "#0f1117"; btnTC.style.borderColor = "var(--accent-green)";
+        btnNDVI.style.background = "var(--bg-input)"; btnNDVI.style.color = "#e8eaf0"; btnNDVI.style.borderColor = "var(--border-color)";
+      });
+      if (btnNDVI) btnNDVI.addEventListener("click", () => {
+        state._mapOverlayLayer.removeLayer(s2TrueColor);
+        state._mapOverlayLayer.addLayer(s2NDVI);
+        btnNDVI.style.background = "var(--accent-green)"; btnNDVI.style.color = "#0f1117"; btnNDVI.style.borderColor = "var(--accent-green)";
+        btnTC.style.background = "var(--bg-input)"; btnTC.style.color = "#e8eaf0"; btnTC.style.borderColor = "var(--border-color)";
+      });
+    }, 100);
+
+    return div;
+  };
+  toggleCtrl.addTo(state.fullMap);
+  state._mapToggleControl = toggleCtrl;
+
+  state._mapOverlayLayer.addTo(state.fullMap);
+
+  // Zoom to course
+  if (boundary.length >= 3) {
+    state.fullMap.fitBounds(L.polygon(boundary).getBounds().pad(0.3));
+  } else {
+    state.fullMap.setView([course.lat, course.lng], 15);
+  }
+
+  const statusEl = document.getElementById("overlayStatus");
+  if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-blue)">Sentinel-2 위성영상 로드 중... (Copernicus WMS)</span>`;
+
+  // Detect tile load
+  s2TrueColor.on("load", () => {
+    if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-green)">Sentinel-2 실화상 표시 완료</span>`;
+  });
+  s2TrueColor.on("tileerror", () => {
+    if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-orange)">해당 날짜 영상 없음 - NDVI 히트맵으로 전환하세요</span>`;
+  });
+};
+
+// ── Clear all map overlays ────────────────────────────────────────
+
+function clearMapOverlays() {
+  if (state._mapOverlayLayer && state.fullMap) {
+    state.fullMap.removeLayer(state._mapOverlayLayer);
+    state._mapOverlayLayer = null;
+  }
+  if (state._mapLegendControl && state.fullMap) {
+    state.fullMap.removeControl(state._mapLegendControl);
+    state._mapLegendControl = null;
+  }
+  if (state._mapToggleControl && state.fullMap) {
+    state.fullMap.removeControl(state._mapToggleControl);
+    state._mapToggleControl = null;
+  }
+}
 
 // Global function for popup click → go to analysis
 window.viewCourseDetail = function (courseId) {
