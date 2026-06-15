@@ -242,6 +242,49 @@ const SATELLITE_CATALOG = [
     enabled: true,
     tier: "basic",
   },
+  // ===== Planetary Variables (골프장 관리 핵심) =====
+  {
+    id: "soil-water-content",
+    name: "Soil Water Content (토양수분)",
+    provider: "Planet Labs (Planetary Variables)",
+    resolution: "100m",
+    resolution_m: 100,
+    revisit: "거의 매일",
+    bands_nir: "SWC (m³/m³)",
+    bands_red: "-",
+    ndvi_formula: "직접 제공 (토양수분량)",
+    coverage: "전 세계",
+    cost: "Subscriptions API (Education 계정 접근 가능 여부 확인 필요)",
+    api_url: "https://services.sentinel-hub.com/api/v1/process",
+    auth: "Planet Insights OAuth2 / Subscriptions API",
+    env_key: "PLANET_INSIGHTS_CLIENT_ID",
+    data_format: "GeoTIFF / PNG (Processing API)",
+    pros: "관수 의사결정에 핵심. 구름 영향 없음(마이크로파 기반). 20년+ 아카이브. NDVI 하락 전 토양건조 사전 감지",
+    cons: "100m 해상도로 골프장 내부 세부 구역 구분 한계. Subscriptions API 구독 필요",
+    enabled: true,
+    tier: "premium",
+  },
+  {
+    id: "land-surface-temp",
+    name: "Land Surface Temperature (지표면온도)",
+    provider: "Planet Labs (Planetary Variables)",
+    resolution: "100m",
+    resolution_m: 100,
+    revisit: "하루 2회 (01:30, 13:30 태양시)",
+    bands_nir: "LST (Kelvin)",
+    bands_red: "-",
+    ndvi_formula: "직접 제공 (지표면 온도 K)",
+    coverage: "전 세계",
+    cost: "Subscriptions API (Education 계정 접근 가능 여부 확인 필요)",
+    api_url: "https://services.sentinel-hub.com/api/v1/process",
+    auth: "Planet Insights OAuth2 / Subscriptions API",
+    env_key: "PLANET_INSIGHTS_CLIENT_ID",
+    data_format: "GeoTIFF / PNG (Processing API)",
+    pros: "여름철 잔디 열 스트레스 감지. 구름 영향 없음. 20년+ 아카이브. 낮/밤 온도 모두 측정",
+    cons: "100m 해상도. Subscriptions API 구독 필요",
+    enabled: true,
+    tier: "premium",
+  },
 ];
 
 // ─── Evalscripts ─────────────────────────────────────────────────
@@ -352,6 +395,79 @@ function setup() {
 function evaluatePixel(s) {
   let gain = 3.5;
   return [s.red * gain, s.green * gain, s.blue * gain];
+}
+`;
+
+// Soil Water Content Evalscript (Planet Planetary Variables)
+const SWC_EVALSCRIPT = `
+//VERSION=3
+const vmin = 0;
+const vmax = 0.4;
+function setup() {
+  return { input: ["SWC", "dataMask"], output: { bands: 4 } };
+}
+const cmap = [
+  [0.0, 0xfff7ea],[0.05, 0xfaedda],[0.1, 0xede4cb],[0.15, 0xdedcbd],
+  [0.2, 0xced3af],[0.25, 0xbdcba3],[0.3, 0xaac398],[0.35, 0x96bc90],
+  [0.4, 0x80b48a],[0.45, 0x68ac86],[0.5, 0x4da484],[0.55, 0x269c83],
+  [0.6, 0x009383],[0.65, 0x008a85],[0.7, 0x008186],[0.75, 0x007788],
+  [0.8, 0x006d8a],[0.85, 0x00618c],[0.9, 0x00558d],[0.95, 0x00478f],
+  [1.0, 0x003492]
+];
+function updateColormap(min, max) {
+  const n = cmap.length;
+  const step = (max - min) / (n - 1);
+  for (let i = 0; i < n; i++) cmap[i][0] = min + step * i;
+}
+updateColormap(vmin, vmax);
+const viz = new ColorRampVisualizer(cmap);
+function evaluatePixel(sample) {
+  let val = sample.SWC / 1000;
+  let c = viz.process(val);
+  return [...c, sample.dataMask];
+}
+`;
+
+// Land Surface Temperature Evalscript (Planet Planetary Variables)
+const LST_EVALSCRIPT = `
+//VERSION=3
+const color_min = 263;
+const color_max = 340;
+const sensing_time = "1330";
+function setup() {
+  return { input: ["LST", "dataMask"], output: { bands: 4 }, mosaicking: "TILE" };
+}
+function preProcessScenes(collections) {
+  collections.scenes.tiles = collections.scenes.tiles.filter(
+    t => t.dataPath.includes("T" + sensing_time)
+  );
+  collections.scenes.tiles.sort((a, b) => new Date(b.date) - new Date(a.date));
+  return collections;
+}
+const cmap = [
+  [263, 0x000004],[266, 0x06051a],[270, 0x140e36],[274, 0x251255],
+  [278, 0x3b0f70],[282, 0x51127c],[286, 0x641a80],[289, 0x782281],
+  [293, 0x8c2981],[297, 0xa1307e],[301, 0xb73779],[305, 0xca3e72],
+  [309, 0xde4968],[313, 0xed5a5f],[316, 0xf7705c],[320, 0xfc8961],
+  [324, 0xfe9f6d],[328, 0xfeb77e],[332, 0xfecf92],[336, 0xfde7a9],
+  [340, 0xfcfdbf]
+];
+function updateCMap(min, max) {
+  const n = cmap.length;
+  const step = (max - min) / (n - 1);
+  for (let i = 0; i < n; i++) cmap[i][0] = min + step * i;
+}
+updateCMap(color_min, color_max);
+const viz = new ColorRampVisualizer(cmap);
+function evaluatePixel(samples) {
+  const sf = 100;
+  const dm = samples[0].dataMask;
+  let val = NaN;
+  for (let i = 0; i < samples.length; i++) {
+    if (samples[i].dataMask === 1) { val = samples[i].LST / sf; break; }
+  }
+  let c = viz.process(val);
+  return [...c, dm];
 }
 `;
 
@@ -583,6 +699,139 @@ class SatelliteService {
     return {
       configured: !!(clientId && clientSecret),
       clientId: clientId ? clientId.substring(0, 8) + "..." : null,
+    };
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  Planetary Variables: SWC (토양수분) / LST (지표면온도)
+  //  BYOC Collection → Processing API evalscript 방식
+  //  Subscriptions API로 데이터 구독 필요 (Education 계정 가능 여부 확인 필요)
+  //  대안: Sentinel Hub에서 직접 접근 가능한 공개 데이터로 시뮬레이션
+  // ════════════════════════════════════════════════════════════════
+
+  /**
+   * SWC (토양수분) 이미지 생성
+   * Planet BYOC Collection ID가 필요 (Subscriptions로 구독 후 발급됨)
+   * BYOC ID가 없으면 시뮬레이션 데이터로 대체
+   */
+  async getSoilWaterContentImage(bbox, date, width = 512, height = 512) {
+    const token = await this.getPlanetInsightsToken();
+    const byocId = process.env.PLANET_SWC_COLLECTION_ID;
+
+    if (token && byocId) {
+      // Real API call with BYOC collection
+      try {
+        const r = await axios.post(PLANET_INSIGHTS_PROCESS_URL, {
+          input: {
+            bounds: { bbox, properties: { crs: "http://www.opengis.net/def/crs/EPSG/0/4326" } },
+            data: [{ type: byocId, dataFilter: { timeRange: { from: `${date}T00:00:00Z`, to: `${date}T23:59:59Z` } } }],
+          },
+          output: { width, height, responses: [{ identifier: "default", format: { type: "image/png" } }] },
+          evalscript: SWC_EVALSCRIPT,
+        }, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" },
+          responseType: "arraybuffer",
+          timeout: 30000,
+        });
+        return { type: "real", image: Buffer.from(r.data).toString("base64") };
+      } catch (err) {
+        console.error("[SWC] Processing 실패:", err.message);
+      }
+    }
+
+    // Simulation: 골프장 영역에 대한 시뮬레이션 SWC 데이터 생성
+    return { type: "simulated", data: this.simulateSWC(bbox, date) };
+  }
+
+  /**
+   * LST (지표면온도) 이미지 생성
+   */
+  async getLandSurfaceTempImage(bbox, date, width = 512, height = 512) {
+    const token = await this.getPlanetInsightsToken();
+    const byocId = process.env.PLANET_LST_COLLECTION_ID;
+
+    if (token && byocId) {
+      try {
+        const r = await axios.post(PLANET_INSIGHTS_PROCESS_URL, {
+          input: {
+            bounds: { bbox, properties: { crs: "http://www.opengis.net/def/crs/EPSG/0/4326" } },
+            data: [{ type: byocId, dataFilter: { timeRange: { from: `${date}T00:00:00Z`, to: `${date}T23:59:59Z` } } }],
+          },
+          output: { width, height, responses: [{ identifier: "default", format: { type: "image/png" } }] },
+          evalscript: LST_EVALSCRIPT,
+        }, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" },
+          responseType: "arraybuffer",
+          timeout: 30000,
+        });
+        return { type: "real", image: Buffer.from(r.data).toString("base64") };
+      } catch (err) {
+        console.error("[LST] Processing 실패:", err.message);
+      }
+    }
+
+    return { type: "simulated", data: this.simulateLST(bbox, date) };
+  }
+
+  /** SWC 시뮬레이션 데이터 (m³/m³) */
+  simulateSWC(bbox, date) {
+    const month = new Date(date).getMonth();
+    // 계절 기반 기본값 (한국 기후)
+    let base = 0.25; // m³/m³
+    if (month >= 6 && month <= 8) base = 0.32; // 여름 장마
+    if (month >= 11 || month <= 2) base = 0.15; // 겨울 건조
+    if (month >= 3 && month <= 5) base = 0.22; // 봄
+
+    const [w, s, e, n] = bbox;
+    const rows = 8, cols = 8;
+    const grid = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const noise = (Math.random() - 0.5) * 0.1;
+        grid.push({
+          lat: s + (n - s) * (r + 0.5) / rows,
+          lng: w + (e - w) * (c + 0.5) / cols,
+          swc: Math.max(0.05, Math.min(0.5, base + noise)),
+        });
+      }
+    }
+    return {
+      mean: Math.round(base * 1000) / 1000,
+      unit: "m³/m³",
+      date,
+      grid,
+      status: base < 0.15 ? "건조 - 관수 필요" : base < 0.25 ? "보통" : "양호",
+    };
+  }
+
+  /** LST 시뮬레이션 데이터 (°C) */
+  simulateLST(bbox, date) {
+    const month = new Date(date).getMonth();
+    let base = 15; // °C
+    if (month >= 6 && month <= 8) base = 32;
+    if (month >= 11 || month <= 2) base = 2;
+    if (month >= 3 && month <= 5) base = 18;
+    if (month >= 9 && month <= 10) base = 20;
+
+    const [w, s, e, n] = bbox;
+    const rows = 8, cols = 8;
+    const grid = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const noise = (Math.random() - 0.5) * 6;
+        grid.push({
+          lat: s + (n - s) * (r + 0.5) / rows,
+          lng: w + (e - w) * (c + 0.5) / cols,
+          temp: Math.round((base + noise) * 10) / 10,
+        });
+      }
+    }
+    return {
+      mean: base,
+      unit: "°C",
+      date,
+      grid,
+      status: base > 35 ? "열 스트레스 위험" : base > 30 ? "고온 주의" : base > 25 ? "양호" : "정상",
     };
   }
 

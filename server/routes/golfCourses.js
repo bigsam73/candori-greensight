@@ -117,4 +117,70 @@ router.post("/", (req, res) => {
   }
 });
 
+// PUT /api/golf-courses/:id - 골프장 정보 수정 (위치, 바운더리 등)
+router.put("/:id", (req, res) => {
+  const database = db.getDb();
+  const { id } = req.params;
+  const updates = req.body;
+
+  try {
+    if (database._type === "sqlite") {
+      const fields = [];
+      const values = [];
+      const allowedFields = ["name", "name_en", "lat", "lng", "address", "region", "holes", "area_sqm", "boundary", "zones"];
+
+      for (const key of allowedFields) {
+        if (updates[key] !== undefined) {
+          fields.push(`${key} = ?`);
+          if (key === "boundary" || key === "zones") {
+            values.push(JSON.stringify(updates[key]));
+          } else {
+            values.push(updates[key]);
+          }
+        }
+      }
+
+      if (fields.length === 0) return res.status(400).json({ error: "수정할 항목이 없습니다" });
+
+      values.push(id);
+      database.prepare(`UPDATE golf_courses SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    } else {
+      const course = database._data.golf_courses.find((c) => c.id === Number(id));
+      if (!course) return res.status(404).json({ error: "골프장을 찾을 수 없습니다" });
+
+      const allowedFields = ["name", "name_en", "lat", "lng", "address", "region", "holes", "area_sqm", "boundary", "zones"];
+      for (const key of allowedFields) {
+        if (updates[key] !== undefined) {
+          course[key] = updates[key];
+        }
+      }
+      database._save();
+    }
+
+    res.json({ message: "골프장 정보 수정 완료", id: Number(id) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/golf-courses/:id - 골프장 삭제
+router.delete("/:id", (req, res) => {
+  const database = db.getDb();
+  const { id } = req.params;
+
+  try {
+    if (database._type === "sqlite") {
+      database.prepare("DELETE FROM golf_courses WHERE id = ?").run(id);
+      database.prepare("DELETE FROM ndvi_records WHERE course_id = ?").run(id);
+    } else {
+      database._data.golf_courses = database._data.golf_courses.filter((c) => c.id !== Number(id));
+      database._data.ndvi_records = database._data.ndvi_records.filter((r) => r.course_id !== Number(id));
+      database._save();
+    }
+    res.json({ message: "골프장 삭제 완료", id: Number(id) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

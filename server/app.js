@@ -105,6 +105,28 @@ app.get("/api/planet/basemaps", async (req, res) => {
   }
 });
 
+// Soil Water Content (토양수분) 조회
+app.post("/api/planet/swc", async (req, res) => {
+  const { bbox, date } = req.body;
+  try {
+    const result = await satelliteService.getSoilWaterContentImage(bbox, date);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Land Surface Temperature (지표면온도) 조회
+app.post("/api/planet/lst", async (req, res) => {
+  const { bbox, date } = req.body;
+  try {
+    const result = await satelliteService.getLandSurfaceTempImage(bbox, date);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Planet Basemaps - 타일 URL 정보 (프론트엔드에서 Leaflet 레이어로 사용)
 app.get("/api/planet/basemap-tile-url", (req, res) => {
   const apiKey = process.env.PLANET_API_KEY;

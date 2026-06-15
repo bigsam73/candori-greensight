@@ -68,8 +68,18 @@ const API = {
     if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res.json();
   },
-  async put(url) {
-    const res = await fetch(url, { method: "PUT" });
+  async put(url, data) {
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: data ? JSON.stringify(data) : undefined,
+    });
+    if (!res.ok) throw new Error(`API Error: ${res.status}`);
+    return res.json();
+  },
+  async delete(url) {
+    const res = await fetch(url, { method: "DELETE" });
+    if (!res.ok) throw new Error(`API Error: ${res.status}`);
     return res.json();
   },
 };
@@ -337,13 +347,23 @@ function renderCoursesGrid() {
           <div class="info-item"><span>위치:</span> ${c.lat?.toFixed(4)}, ${c.lng?.toFixed(4)}</div>
           <div class="info-item"><span>갱신:</span> ${c.latest_date || "-"}</div>
         </div>
+        <div style="display:flex;gap:6px;margin-top:10px">
+          <button class="btn btn-sm btn-secondary edit-location-btn" data-id="${c.id}" style="flex:1;justify-content:center" onclick="event.stopPropagation(); openEditLocationModal(${c.id})">
+            <span class="material-icons-outlined">edit_location_alt</span>
+            위치/영역 수정
+          </button>
+          <button class="btn btn-sm" style="justify-content:center;background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.2)" onclick="event.stopPropagation(); deleteCourse(${c.id}, '${c.name.replace(/'/g, "\\'")}')">
+            <span class="material-icons-outlined">delete</span>
+          </button>
+        </div>
       </div>
     `;
     })
     .join("");
 
   grid.querySelectorAll(".course-card").forEach((card) => {
-    card.addEventListener("click", () => {
+    card.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return; // 버튼 클릭은 무시
       const id = card.dataset.courseId;
       state.selectedCourse = state.courses.find((c) => c.id === Number(id));
       switchView("analysis");
@@ -810,6 +830,16 @@ function showSelectedDateDetail(course, record) {
       <button class="btn btn-sm" style="flex:1;justify-content:center;background:rgba(96,165,250,0.15);color:#60a5fa;border:1px solid rgba(96,165,250,0.3)" onclick="requestPlanetImage('${course.id}', '${record.date}', 'rgb')">
         <span class="material-icons-outlined">image</span>
         Planet RGB
+      </button>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <button class="btn btn-sm" style="flex:1;justify-content:center;background:rgba(45,212,191,0.15);color:#2dd4bf;border:1px solid rgba(45,212,191,0.3)" onclick="requestSWCOverlay('${course.id}', '${record.date}')">
+        <span class="material-icons-outlined">water_drop</span>
+        토양수분
+      </button>
+      <button class="btn btn-sm" style="flex:1;justify-content:center;background:rgba(248,113,113,0.15);color:#f87171;border:1px solid rgba(248,113,113,0.3)" onclick="requestLSTOverlay('${course.id}', '${record.date}')">
+        <span class="material-icons-outlined">thermostat</span>
+        지표면온도
       </button>
     </div>
     <div id="overlayStatus" style="margin-top:6px;font-size:10px;color:var(--text-muted)"></div>
@@ -2413,6 +2443,190 @@ function renderSatelliteGrid(satellites) {
     })
     .join("");
 }
+
+// ============ EDIT LOCATION (골프장 위치/영역 수정) ============
+
+let editMap = null;
+let editMarker = null;
+let editDrawnItems = null;
+
+window.openEditLocationModal = function (courseId) {
+  const course = state.courses.find((c) => c.id === Number(courseId));
+  if (!course) return;
+
+  document.getElementById("editLocationModal").classList.add("active");
+  document.getElementById("editLocationTitle").textContent = `${course.name} - 위치/영역 수정`;
+  document.getElementById("editCourseId").value = courseId;
+  document.getElementById("editName").value = course.name;
+  document.getElementById("editLat").value = course.lat;
+  document.getElementById("editLng").value = course.lng;
+  document.getElementById("editAddress").value = course.address || "";
+
+  setTimeout(() => initEditLocationMap(course), 200);
+};
+
+function initEditLocationMap(course) {
+  if (editMap) { editMap.remove(); editMap = null; }
+
+  editMap = L.map("editLocationMap", { zoomControl: true, attributionControl: false })
+    .setView([course.lat, course.lng], 16);
+
+  // Google Hybrid background
+  L.tileLayer("https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", {
+    maxZoom: 21, attribution: "Google",
+  }).addTo(editMap);
+
+  // Draggable center marker
+  editMarker = L.marker([course.lat, course.lng], {
+    draggable: true,
+    icon: L.divIcon({
+      className: "",
+      html: '<div style="width:24px;height:24px;border-radius:50%;background:#4ade80;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div>',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    }),
+  }).addTo(editMap);
+
+  editMarker.on("dragend", function () {
+    const pos = editMarker.getLatLng();
+    document.getElementById("editLat").value = Math.round(pos.lat * 10000) / 10000;
+    document.getElementById("editLng").value = Math.round(pos.lng * 10000) / 10000;
+  });
+
+  // Lat/lng input → move marker
+  document.getElementById("editLat").addEventListener("change", syncMarkerFromInputs);
+  document.getElementById("editLng").addEventListener("change", syncMarkerFromInputs);
+
+  // Editable boundary layer
+  editDrawnItems = new L.FeatureGroup();
+  editMap.addLayer(editDrawnItems);
+
+  // Load existing boundary
+  const boundary = course.boundary || [];
+  if (boundary.length >= 3) {
+    const polygon = L.polygon(boundary, {
+      color: "#4ade80", weight: 2, fillColor: "#4ade80", fillOpacity: 0.15,
+    });
+    editDrawnItems.addLayer(polygon);
+    updateEditBoundaryInfo(boundary);
+  } else {
+    document.getElementById("editBoundaryInfo").innerHTML = '<span style="color:var(--accent-orange)">영역 미설정 - 도구로 새로 그리세요</span>';
+  }
+
+  // Draw controls
+  const drawControl = new L.Control.Draw({
+    position: "topleft",
+    draw: {
+      polygon: { allowIntersection: false, shapeOptions: { color: "#4ade80", weight: 2, fillOpacity: 0.15 } },
+      rectangle: { shapeOptions: { color: "#4ade80", weight: 2, fillOpacity: 0.15 } },
+      circle: false, circlemarker: false, marker: false, polyline: false,
+    },
+    edit: { featureGroup: editDrawnItems, remove: true, edit: true },
+  });
+  editMap.addControl(drawControl);
+
+  // New drawing created
+  editMap.on(L.Draw.Event.CREATED, function (e) {
+    editDrawnItems.clearLayers();
+    editDrawnItems.addLayer(e.layer);
+    const coords = extractBoundaryCoords(e.layer);
+    updateEditBoundaryInfo(coords);
+    // Move marker to center of new boundary
+    const center = e.layer.getBounds().getCenter();
+    editMarker.setLatLng(center);
+    document.getElementById("editLat").value = Math.round(center.lat * 10000) / 10000;
+    document.getElementById("editLng").value = Math.round(center.lng * 10000) / 10000;
+  });
+
+  // Editing existing boundary
+  editMap.on(L.Draw.Event.EDITED, function () {
+    editDrawnItems.eachLayer((layer) => {
+      const coords = extractBoundaryCoords(layer);
+      updateEditBoundaryInfo(coords);
+    });
+  });
+
+  // Deleted
+  editMap.on(L.Draw.Event.DELETED, function () {
+    document.getElementById("editBoundaryData").value = "[]";
+    document.getElementById("editBoundaryInfo").innerHTML = '<span style="color:var(--accent-orange)">영역 삭제됨</span>';
+  });
+}
+
+function syncMarkerFromInputs() {
+  const lat = parseFloat(document.getElementById("editLat").value);
+  const lng = parseFloat(document.getElementById("editLng").value);
+  if (!isNaN(lat) && !isNaN(lng) && editMarker && editMap) {
+    editMarker.setLatLng([lat, lng]);
+    editMap.panTo([lat, lng]);
+  }
+}
+
+function extractBoundaryCoords(layer) {
+  const latlngs = layer.getLatLngs();
+  const coords = (latlngs[0] || latlngs).map((p) => [
+    Math.round(p.lat * 10000) / 10000,
+    Math.round(p.lng * 10000) / 10000,
+  ]);
+  return coords;
+}
+
+function updateEditBoundaryInfo(coords) {
+  document.getElementById("editBoundaryData").value = JSON.stringify(coords);
+  const area = calculateArea(coords);
+  document.getElementById("editBoundaryInfo").innerHTML = `
+    <div style="color:var(--accent-green)">영역 설정됨</div>
+    <div>꼭짓점: ${coords.length}개</div>
+    <div>면적: ~${area} m&sup2;</div>
+  `;
+}
+
+window.saveEditedLocation = async function () {
+  const courseId = document.getElementById("editCourseId").value;
+  const lat = parseFloat(document.getElementById("editLat").value);
+  const lng = parseFloat(document.getElementById("editLng").value);
+  const name = document.getElementById("editName").value;
+  const address = document.getElementById("editAddress").value;
+
+  let boundary;
+  try {
+    boundary = JSON.parse(document.getElementById("editBoundaryData").value || "[]");
+  } catch (_) {
+    boundary = [];
+  }
+
+  // If no boundary data from edit but drawn items exist, extract
+  if (boundary.length === 0 && editDrawnItems) {
+    editDrawnItems.eachLayer((layer) => {
+      boundary = extractBoundaryCoords(layer);
+    });
+  }
+
+  try {
+    await API.put(`/api/golf-courses/${courseId}`, { name, lat, lng, address, boundary });
+    showToast(`"${name}" 위치/영역 저장 완료`);
+    closeEditLocationModal();
+    loadData();
+  } catch (err) {
+    alert("저장 실패: " + err.message);
+  }
+};
+
+window.closeEditLocationModal = function () {
+  document.getElementById("editLocationModal").classList.remove("active");
+  if (editMap) { editMap.remove(); editMap = null; editMarker = null; editDrawnItems = null; }
+};
+
+window.deleteCourse = async function (courseId, courseName) {
+  if (!confirm(`"${courseName}"을(를) 삭제하시겠습니까?\n관련 NDVI 데이터도 모두 삭제됩니다.`)) return;
+  try {
+    await API.delete(`/api/golf-courses/${courseId}`);
+    showToast(`"${courseName}" 삭제 완료`);
+    loadData();
+  } catch (err) {
+    alert("삭제 실패: " + err.message);
+  }
+};
 
 // ============ MAP DRAWING (골프장 영역 마킹) ============
 
