@@ -115,6 +115,25 @@ function getNDVIHealthEmoji(ndvi) {
   return "";
 }
 
+// ============ BOUNDARY PARSER (단일/다중 폴리곤 호환) ============
+function parseBoundary(boundary) {
+  if (!boundary || !Array.isArray(boundary) || boundary.length === 0) return [];
+  // 다중 폴리곤: [{ name: "코스1", coords: [[lat,lng]...] }, ...]
+  if (boundary[0] && boundary[0].coords) return boundary;
+  // 단일 폴리곤: [[lat,lng], [lat,lng], ...]
+  if (Array.isArray(boundary[0]) && typeof boundary[0][0] === "number") {
+    return [{ name: "전체", coords: boundary }];
+  }
+  return [];
+}
+
+function getAllBoundaryCoords(boundary) {
+  const polys = parseBoundary(boundary);
+  const all = [];
+  polys.forEach((p) => { if (p.coords) all.push(...p.coords); });
+  return all;
+}
+
 // ============ INITIALIZATION ============
 document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
@@ -568,17 +587,20 @@ function updateMapMarkers(map, courses) {
       </div>
     `);
 
-    // Add boundary polygon if available
-    if (c.boundary && c.boundary.length >= 3) {
-      const polygon = L.polygon(c.boundary, {
-        color: color,
-        weight: 2,
-        fillColor: color,
-        fillOpacity: 0.15,
-        dashArray: "5,5",
-      }).addTo(map);
-      map._courseMarkers.push(polygon);
-    }
+    // Add boundary polygon(s) - 다중 코스 지원
+    const boundaries = parseBoundary(c.boundary);
+    boundaries.forEach((poly, pi) => {
+      if (poly.coords && poly.coords.length >= 3) {
+        const pColor = pi === 0 ? color : POLY_COLORS[pi % POLY_COLORS.length];
+        const polygon = L.polygon(poly.coords, {
+          color: pColor, weight: 2, fillColor: pColor, fillOpacity: 0.12, dashArray: "5,5",
+        }).addTo(map);
+        if (poly.name && boundaries.length > 1) {
+          polygon.bindTooltip(poly.name, { permanent: false, direction: "center", className: "poly-label" });
+        }
+        map._courseMarkers.push(polygon);
+      }
+    });
 
     map._courseMarkers.push(marker);
   });
@@ -2444,11 +2466,12 @@ function renderSatelliteGrid(satellites) {
     .join("");
 }
 
-// ============ EDIT LOCATION (골프장 위치/영역 수정) ============
+// ============ EDIT LOCATION (골프장 위치/영역 수정 - 다중 코스 지원) ============
 
 let editMap = null;
 let editMarker = null;
 let editDrawnItems = null;
+const POLY_COLORS = ["#4ade80", "#60a5fa", "#fb923c", "#a78bfa", "#f87171", "#2dd4bf", "#fbbf24", "#e879f9"];
 
 window.openEditLocationModal = function (courseId) {
   const course = state.courses.find((c) => c.id === Number(courseId));
@@ -2469,9 +2492,8 @@ function initEditLocationMap(course) {
   if (editMap) { editMap.remove(); editMap = null; }
 
   editMap = L.map("editLocationMap", { zoomControl: true, attributionControl: false })
-    .setView([course.lat, course.lng], 16);
+    .setView([course.lat, course.lng], 15);
 
-  // Google Hybrid background
   L.tileLayer("https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", {
     maxZoom: 21, attribution: "Google",
   }).addTo(editMap);
@@ -2482,8 +2504,7 @@ function initEditLocationMap(course) {
     icon: L.divIcon({
       className: "",
       html: '<div style="width:24px;height:24px;border-radius:50%;background:#4ade80;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div>',
-      iconSize: [24, 24],
-      iconAnchor: [12, 12],
+      iconSize: [24, 24], iconAnchor: [12, 12],
     }),
   }).addTo(editMap);
 
@@ -2493,27 +2514,18 @@ function initEditLocationMap(course) {
     document.getElementById("editLng").value = Math.round(pos.lng * 10000) / 10000;
   });
 
-  // Lat/lng input → move marker
   document.getElementById("editLat").addEventListener("change", syncMarkerFromInputs);
   document.getElementById("editLng").addEventListener("change", syncMarkerFromInputs);
 
-  // Editable boundary layer
+  // Multi-polygon layer group
   editDrawnItems = new L.FeatureGroup();
   editMap.addLayer(editDrawnItems);
 
-  // Load existing boundary
+  // Load existing boundaries (다중 폴리곤 지원)
   const boundary = course.boundary || [];
-  if (boundary.length >= 3) {
-    const polygon = L.polygon(boundary, {
-      color: "#4ade80", weight: 2, fillColor: "#4ade80", fillOpacity: 0.15,
-    });
-    editDrawnItems.addLayer(polygon);
-    updateEditBoundaryInfo(boundary);
-  } else {
-    document.getElementById("editBoundaryInfo").innerHTML = '<span style="color:var(--accent-orange)">영역 미설정 - 도구로 새로 그리세요</span>';
-  }
+  loadBoundariesToMap(boundary);
 
-  // Draw controls
+  // Draw controls - 여러 개 폴리곤 추가 가능 (clearLayers 하지 않음)
   const drawControl = new L.Control.Draw({
     position: "topleft",
     draw: {
@@ -2525,33 +2537,117 @@ function initEditLocationMap(course) {
   });
   editMap.addControl(drawControl);
 
-  // New drawing created
+  // New polygon added (여러 개 추가 가능)
   editMap.on(L.Draw.Event.CREATED, function (e) {
-    editDrawnItems.clearLayers();
-    editDrawnItems.addLayer(e.layer);
-    const coords = extractBoundaryCoords(e.layer);
-    updateEditBoundaryInfo(coords);
-    // Move marker to center of new boundary
+    const layerCount = Object.keys(editDrawnItems._layers).length;
+    const color = POLY_COLORS[layerCount % POLY_COLORS.length];
+    e.layer.setStyle({ color, fillColor: color, fillOpacity: 0.15, weight: 2 });
+
+    // 폴리곤에 코스 이름 라벨 추가
     const center = e.layer.getBounds().getCenter();
-    editMarker.setLatLng(center);
-    document.getElementById("editLat").value = Math.round(center.lat * 10000) / 10000;
-    document.getElementById("editLng").value = Math.round(center.lng * 10000) / 10000;
+    const courseName = `코스 ${layerCount + 1}`;
+    e.layer._courseName = courseName;
+    e.layer.bindTooltip(courseName, { permanent: true, direction: "center", className: "poly-label" });
+
+    editDrawnItems.addLayer(e.layer);
+    updateMultiBoundaryInfo();
+
+    // 첫 폴리곤이면 마커도 이동
+    if (layerCount === 0) {
+      editMarker.setLatLng(center);
+      document.getElementById("editLat").value = Math.round(center.lat * 10000) / 10000;
+      document.getElementById("editLng").value = Math.round(center.lng * 10000) / 10000;
+    }
   });
 
-  // Editing existing boundary
-  editMap.on(L.Draw.Event.EDITED, function () {
+  editMap.on(L.Draw.Event.EDITED, function () { updateMultiBoundaryInfo(); });
+  editMap.on(L.Draw.Event.DELETED, function () { updateMultiBoundaryInfo(); });
+}
+
+function loadBoundariesToMap(boundary) {
+  if (!boundary || !editDrawnItems) return;
+
+  // 다중 폴리곤 형식 감지
+  // 형식 1 (기존): [[lat,lng], [lat,lng], ...] → 단일 폴리곤
+  // 형식 2 (새): [{ name: "코스1", coords: [[lat,lng]...] }, ...] → 다중 폴리곤
+  let polygons = [];
+
+  if (boundary.length > 0 && Array.isArray(boundary[0]) && typeof boundary[0][0] === "number") {
+    // 기존 단일 폴리곤
+    polygons = [{ name: "코스 1", coords: boundary }];
+  } else if (boundary.length > 0 && boundary[0].coords) {
+    // 다중 폴리곤
+    polygons = boundary;
+  }
+
+  const allBounds = [];
+  polygons.forEach((poly, i) => {
+    if (!poly.coords || poly.coords.length < 3) return;
+    const color = POLY_COLORS[i % POLY_COLORS.length];
+    const layer = L.polygon(poly.coords, { color, fillColor: color, fillOpacity: 0.15, weight: 2 });
+    layer._courseName = poly.name || `코스 ${i + 1}`;
+    layer.bindTooltip(layer._courseName, { permanent: true, direction: "center", className: "poly-label" });
+    editDrawnItems.addLayer(layer);
+    allBounds.push(layer.getBounds());
+  });
+
+  if (allBounds.length > 0) {
+    const combined = allBounds.reduce((acc, b) => acc.extend(b), L.latLngBounds(allBounds[0]));
+    editMap.fitBounds(combined.pad(0.15));
+  }
+
+  updateMultiBoundaryInfo();
+}
+
+function updateMultiBoundaryInfo() {
+  const infoEl = document.getElementById("editBoundaryInfo");
+  const layers = [];
+  if (editDrawnItems) {
     editDrawnItems.eachLayer((layer) => {
       const coords = extractBoundaryCoords(layer);
-      updateEditBoundaryInfo(coords);
+      layers.push({
+        name: layer._courseName || `코스 ${layers.length + 1}`,
+        coords,
+        area: calculateArea(coords),
+      });
     });
-  });
+  }
 
-  // Deleted
-  editMap.on(L.Draw.Event.DELETED, function () {
+  if (layers.length === 0) {
+    infoEl.innerHTML = '<span style="color:var(--accent-orange)">영역 미설정 - 도구로 코스 영역을 그리세요</span>';
     document.getElementById("editBoundaryData").value = "[]";
-    document.getElementById("editBoundaryInfo").innerHTML = '<span style="color:var(--accent-orange)">영역 삭제됨</span>';
-  });
+    return;
+  }
+
+  const totalArea = layers.reduce((sum, l) => sum + parseInt(l.area.replace(/,/g, "")) || 0, 0);
+  infoEl.innerHTML = `
+    <div style="color:var(--accent-green);margin-bottom:4px">${layers.length}개 코스 영역</div>
+    ${layers.map((l, i) => `
+      <div style="display:flex;align-items:center;gap:4px;padding:2px 0;border-bottom:1px solid var(--border-color)">
+        <div style="width:8px;height:8px;border-radius:2px;background:${POLY_COLORS[i % POLY_COLORS.length]};flex-shrink:0"></div>
+        <input type="text" value="${l.name}" style="flex:1;background:transparent;border:none;color:var(--text-primary);font-size:10px;padding:2px;outline:none" onchange="renamePolygon(${i}, this.value)">
+        <span style="font-size:9px;color:var(--text-muted)">${l.area}m&sup2;</span>
+      </div>
+    `).join("")}
+    <div style="margin-top:4px;font-size:9px;color:var(--text-muted)">총 면적: ~${totalArea.toLocaleString()} m&sup2;</div>
+  `;
+
+  // 다중 폴리곤 형식으로 저장
+  const boundaryData = layers.map((l) => ({ name: l.name, coords: l.coords }));
+  document.getElementById("editBoundaryData").value = JSON.stringify(boundaryData);
 }
+
+window.renamePolygon = function (index, newName) {
+  let i = 0;
+  editDrawnItems.eachLayer((layer) => {
+    if (i === index) {
+      layer._courseName = newName;
+      layer.setTooltipContent(newName);
+    }
+    i++;
+  });
+  updateMultiBoundaryInfo();
+};
 
 function syncMarkerFromInputs() {
   const lat = parseFloat(document.getElementById("editLat").value);
@@ -2564,21 +2660,8 @@ function syncMarkerFromInputs() {
 
 function extractBoundaryCoords(layer) {
   const latlngs = layer.getLatLngs();
-  const coords = (latlngs[0] || latlngs).map((p) => [
-    Math.round(p.lat * 10000) / 10000,
-    Math.round(p.lng * 10000) / 10000,
-  ]);
-  return coords;
-}
-
-function updateEditBoundaryInfo(coords) {
-  document.getElementById("editBoundaryData").value = JSON.stringify(coords);
-  const area = calculateArea(coords);
-  document.getElementById("editBoundaryInfo").innerHTML = `
-    <div style="color:var(--accent-green)">영역 설정됨</div>
-    <div>꼭짓점: ${coords.length}개</div>
-    <div>면적: ~${area} m&sup2;</div>
-  `;
+  const ring = latlngs[0] || latlngs;
+  return ring.map((p) => [Math.round(p.lat * 10000) / 10000, Math.round(p.lng * 10000) / 10000]);
 }
 
 window.saveEditedLocation = async function () {
@@ -2595,16 +2678,9 @@ window.saveEditedLocation = async function () {
     boundary = [];
   }
 
-  // If no boundary data from edit but drawn items exist, extract
-  if (boundary.length === 0 && editDrawnItems) {
-    editDrawnItems.eachLayer((layer) => {
-      boundary = extractBoundaryCoords(layer);
-    });
-  }
-
   try {
     await API.put(`/api/golf-courses/${courseId}`, { name, lat, lng, address, boundary });
-    showToast(`"${name}" 위치/영역 저장 완료`);
+    showToast(`"${name}" 위치/영역 저장 완료 (${Array.isArray(boundary) ? boundary.length : 0}개 코스)`);
     closeEditLocationModal();
     loadData();
   } catch (err) {
@@ -2687,48 +2763,61 @@ function initDrawMap() {
   });
   drawMap.addControl(drawControl);
 
-  // Handle draw created
+  // Handle draw created - 다중 코스 추가 가능
   drawMap.on(L.Draw.Event.CREATED, function (e) {
-    // Clear previous drawings (one golf course at a time)
-    drawnItems.clearLayers();
+    const layerCount = Object.keys(drawnItems._layers).length;
+    const color = POLY_COLORS[layerCount % POLY_COLORS.length];
+    e.layer.setStyle({ color, fillColor: color, fillOpacity: 0.15, weight: 2 });
+
+    const courseName = `코스 ${layerCount + 1}`;
+    e.layer._courseName = courseName;
+    e.layer.bindTooltip(courseName, { permanent: true, direction: "center", className: "poly-label" });
+
     drawnItems.addLayer(e.layer);
 
-    // Extract boundary coordinates
-    const latlngs = e.layer.getLatLngs();
-    const coords = (latlngs[0] || latlngs).map((p) => [
-      Math.round(p.lat * 10000) / 10000,
-      Math.round(p.lng * 10000) / 10000,
-    ]);
+    // 전체 영역의 중심 계산
+    const allBounds = L.latLngBounds([]);
+    drawnItems.eachLayer((l) => allBounds.extend(l.getBounds()));
+    const center = allBounds.getCenter();
 
-    // Calculate center
-    const bounds = e.layer.getBounds();
-    const center = bounds.getCenter();
-    const area = calculateArea(coords);
-
-    // Fill hidden fields
     document.getElementById("drawLat").value = Math.round(center.lat * 10000) / 10000;
     document.getElementById("drawLng").value = Math.round(center.lng * 10000) / 10000;
-    document.getElementById("drawBoundary").value = JSON.stringify(coords);
 
-    // Update info display
+    // 다중 폴리곤 형식으로 저장
+    const polygons = [];
+    drawnItems.eachLayer((l) => {
+      const coords = extractBoundaryCoords(l);
+      polygons.push({ name: l._courseName || `코스 ${polygons.length + 1}`, coords });
+    });
+    document.getElementById("drawBoundary").value = JSON.stringify(polygons);
+
+    const totalArea = polygons.reduce((sum, p) => sum + parseInt(calculateArea(p.coords).replace(/,/g, "")) || 0, 0);
     document.getElementById("drawInfo").innerHTML = `
-      <div style="color:var(--accent-green);margin-bottom:4px">영역 설정 완료</div>
-      <div>중심: ${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}</div>
-      <div>꼭짓점: ${coords.length}개</div>
-      <div>면적: ~${area} m&sup2;</div>
+      <div style="color:var(--accent-green);margin-bottom:4px">${polygons.length}개 코스 영역</div>
+      ${polygons.map((p, i) => `
+        <div style="display:flex;align-items:center;gap:4px;padding:2px 0">
+          <div style="width:8px;height:8px;border-radius:2px;background:${POLY_COLORS[i % POLY_COLORS.length]}"></div>
+          <span style="font-size:10px">${p.name}</span>
+          <span style="font-size:9px;color:var(--text-muted);margin-left:auto">${calculateArea(p.coords)}m&sup2;</span>
+        </div>
+      `).join("")}
+      <div style="margin-top:4px;font-size:9px;color:var(--text-muted)">총 면적: ~${totalArea.toLocaleString()} m&sup2;</div>
+      <div style="margin-top:4px;color:var(--accent-blue);font-size:9px">다른 코스를 추가로 그릴 수 있습니다</div>
     `;
 
-    // Enable submit button
     document.getElementById("submitCourseBtn").disabled = false;
   });
 
   // Handle draw deleted
   drawMap.on(L.Draw.Event.DELETED, function () {
-    document.getElementById("drawLat").value = "";
-    document.getElementById("drawLng").value = "";
-    document.getElementById("drawBoundary").value = "";
-    document.getElementById("drawInfo").innerHTML = '<span style="color:var(--text-muted)">영역을 그려주세요</span>';
-    document.getElementById("submitCourseBtn").disabled = true;
+    const remaining = Object.keys(drawnItems._layers).length;
+    if (remaining === 0) {
+      document.getElementById("drawLat").value = "";
+      document.getElementById("drawLng").value = "";
+      document.getElementById("drawBoundary").value = "";
+      document.getElementById("drawInfo").innerHTML = '<span style="color:var(--text-muted)">영역을 그려주세요</span>';
+      document.getElementById("submitCourseBtn").disabled = true;
+    }
   });
 
   // Add existing courses as reference markers
@@ -2743,14 +2832,14 @@ function initDrawMap() {
       .bindTooltip(c.name, { permanent: false, direction: "top" })
       .addTo(drawMap);
 
-    if (c.boundary && c.boundary.length >= 3) {
-      L.polygon(c.boundary, {
-        color: getNDVIColor(c.latest_ndvi),
-        weight: 1,
-        fillOpacity: 0.08,
-        dashArray: "4,4",
-      }).addTo(drawMap);
-    }
+    const refBounds = parseBoundary(c.boundary);
+    refBounds.forEach((p) => {
+      if (p.coords && p.coords.length >= 3) {
+        L.polygon(p.coords, {
+          color: getNDVIColor(c.latest_ndvi), weight: 1, fillOpacity: 0.08, dashArray: "4,4",
+        }).addTo(drawMap);
+      }
+    });
   });
 }
 

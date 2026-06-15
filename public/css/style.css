@@ -1111,6 +1111,21 @@ body {
   text-decoration: none;
 }
 
+/* ============ POLYGON LABELS ============ */
+.poly-label {
+  background: rgba(30, 33, 48, 0.85) !important;
+  color: #e8eaf0 !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 4px !important;
+  padding: 2px 6px !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  font-family: 'Inter', sans-serif !important;
+  box-shadow: none !important;
+  white-space: nowrap !important;
+}
+.poly-label::before { display: none !important; }
+
 /* ============ OVERLAY TOGGLE BUTTONS ============ */
 .ovl-btn {
   padding: 4px 8px;
