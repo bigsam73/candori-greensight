@@ -1111,6 +1111,32 @@ body {
   text-decoration: none;
 }
 
+/* ============ OVERLAY TOGGLE BUTTONS ============ */
+.ovl-btn {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+
+.ovl-btn:hover {
+  border-color: var(--accent-green);
+  color: var(--text-primary);
+}
+
+.ovl-btn.active {
+  background: var(--accent-green);
+  color: #0f1117;
+  border-color: var(--accent-green);
+  font-weight: 600;
+}
+
 /* ============ NDVI MAP VISUALIZATION ============ */
 .ndvi-tooltip {
   background: var(--bg-card) !important;

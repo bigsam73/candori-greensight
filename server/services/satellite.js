@@ -26,6 +26,28 @@ const db = require("./database");
 // ─── 위성 카탈로그 (해상도 좋은 순) ───────────────────────────────
 const SATELLITE_CATALOG = [
   {
+    id: "planetscope",
+    name: "PlanetScope (Education)",
+    provider: "Planet Labs (Insights Platform)",
+    resolution: "3m",
+    resolution_m: 3,
+    revisit: "매일",
+    bands_nir: "B4 NIR (865nm)",
+    bands_red: "B3 Red (665nm)",
+    ndvi_formula: "(B4 - B3) / (B4 + B3)",
+    coverage: "전 세계 (Education 계정 승인 필요)",
+    cost: "무료 (Education/Research 계정)",
+    api_url: "https://services.sentinel-hub.com/api/v1/process",
+    tiles_url: "https://services.sentinel-hub.com/ogc/wmts/",
+    auth: "Planet Insights OAuth2 (Client ID + Secret)",
+    env_key: "PLANET_INSIGHTS_CLIENT_ID, PLANET_INSIGHTS_CLIENT_SECRET",
+    data_format: "GeoTIFF / PNG (Processing API)",
+    pros: "3m 해상도 매일 촬영. 골프장 그린/페어웨이/벙커 개별 식별 가능. Education 계정 무료",
+    cons: "Education 계정 승인 필요. Processing Unit 할당량 존재",
+    enabled: true,
+    tier: "premium",
+  },
+  {
     id: "planet-nicfi",
     name: "Planet NICFI Basemaps",
     provider: "Planet Labs / NICFI (Norway)",
@@ -42,7 +64,7 @@ const SATELLITE_CATALOG = [
     env_key: "PLANET_API_KEY",
     data_format: "GeoTIFF (COG)",
     pros: "골프장 홀 단위까지 식별 가능한 초고해상도",
-    cons: "월 1회 모자이크만 무료, 일일 영상은 유료",
+    cons: "월 1회 모자이크만 무료, 일일 영상은 유료. 한국 커버리지 제한적",
     evalscript: null,
     enabled: true,
     tier: "premium",
@@ -293,6 +315,50 @@ function evaluatePixel(sample) {
 }
 `;
 
+// PlanetScope NDVI Evalscript (Planet Insights Processing API)
+const PLANETSCOPE_NDVI_EVALSCRIPT = `
+//VERSION=3
+function setup() {
+  return {
+    input: [{ bands: ["Blue", "Green", "Red", "NIR"], units: "DN" }],
+    output: [
+      { id: "ndvi", bands: 1, sampleType: "FLOAT32" },
+      { id: "ndvi_color", bands: 3, sampleType: "AUTO" }
+    ]
+  };
+}
+
+function evaluatePixel(sample) {
+  let ndvi = (sample.NIR - sample.Red) / (sample.NIR + sample.Red);
+  let r, g, b;
+  if (ndvi < -0.1)      { r = 120; g = 120; b = 120; }
+  else if (ndvi < 0.0)  { r = 160; g = 100; b =  80; }
+  else if (ndvi < 0.15) { r = 200; g = 130; b =  80; }
+  else if (ndvi < 0.25) { r = 210; g = 170; b =  60; }
+  else if (ndvi < 0.35) { r = 220; g = 210; b =  50; }
+  else if (ndvi < 0.45) { r = 180; g = 210; b =  50; }
+  else if (ndvi < 0.55) { r = 130; g = 200; b =  60; }
+  else if (ndvi < 0.65) { r =  80; g = 180; b =  50; }
+  else if (ndvi < 0.75) { r =  40; g = 150; b =  30; }
+  else                  { r =  10; g = 110; b =  10; }
+  return { ndvi: [ndvi], ndvi_color: [r, g, b] };
+}
+`;
+
+// PlanetScope True Color Evalscript
+const PLANETSCOPE_RGB_EVALSCRIPT = `
+//VERSION=3
+function setup() {
+  return {
+    input: [{ bands: ["Blue", "Green", "Red"] }],
+    output: { bands: 3 }
+  };
+}
+function evaluatePixel(sample) {
+  return [sample.Red * 3.5, sample.Green * 3.5, sample.Blue * 3.5];
+}
+`;
+
 // ─── API Endpoints ───────────────────────────────────────────────
 
 const CDSE_API_URL = "https://catalogue.dataspace.copernicus.eu/odata/v1";
@@ -301,6 +367,9 @@ const EARTHDATA_CMR_URL = "https://cmr.earthdata.nasa.gov/search";
 const APPEEARS_URL = "https://appeears.earthdatacloud.nasa.gov/api";
 const USGS_M2M_URL = "https://m2m.cr.usgs.gov/api/api/json/stable";
 const PLANET_API_URL = "https://api.planet.com/basemaps/v1/mosaics";
+const PLANET_INSIGHTS_AUTH_URL = "https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token";
+const PLANET_INSIGHTS_PROCESS_URL = "https://services.sentinel-hub.com/api/v1/process";
+const PLANET_INSIGHTS_CATALOG_URL = "https://services.sentinel-hub.com/api/v1/catalog/1.0.0/search";
 
 // ─── Service Class ───────────────────────────────────────────────
 
@@ -308,6 +377,8 @@ class SatelliteService {
   constructor() {
     this.sentinelHubToken = null;
     this.tokenExpiry = null;
+    this.planetInsightsToken = null;
+    this.planetInsightsTokenExpiry = null;
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -329,6 +400,162 @@ class SatelliteService {
     return SATELLITE_CATALOG.filter(
       (s) => s.enabled && (s.tier === "recommended" || s.tier === "premium")
     );
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  0. PlanetScope via Insights Platform (3m, 매일)
+  //     Education 계정: Planet Insights Platform → OAuth2 인증
+  //     Processing API로 NDVI/실화상 이미지 생성
+  // ════════════════════════════════════════════════════════════════
+
+  /**
+   * Planet Insights Platform OAuth2 토큰 취득
+   * insights.planet.com → Settings → OAuth Clients 에서 발급
+   */
+  async getPlanetInsightsToken() {
+    if (this.planetInsightsToken && this.planetInsightsTokenExpiry > Date.now()) {
+      return this.planetInsightsToken;
+    }
+
+    const clientId = process.env.PLANET_INSIGHTS_CLIENT_ID;
+    const clientSecret = process.env.PLANET_INSIGHTS_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return null;
+    }
+
+    try {
+      const response = await axios.post(
+        PLANET_INSIGHTS_AUTH_URL,
+        new URLSearchParams({
+          grant_type: "client_credentials",
+          client_id: clientId,
+          client_secret: clientSecret,
+        }),
+        { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+      );
+      this.planetInsightsToken = response.data.access_token;
+      this.planetInsightsTokenExpiry = Date.now() + response.data.expires_in * 1000 - 60000;
+      console.log("[PlanetScope] OAuth2 토큰 취득 성공");
+      return this.planetInsightsToken;
+    } catch (err) {
+      console.error("[PlanetScope] 인증 실패:", err.message);
+      return null;
+    }
+  }
+
+  /**
+   * PlanetScope 영상 검색 (Catalog API)
+   */
+  async searchPlanetScope(bbox, dateFrom, dateTo) {
+    const token = await this.getPlanetInsightsToken();
+    if (!token) return [];
+
+    try {
+      const response = await axios.post(
+        PLANET_INSIGHTS_CATALOG_URL,
+        {
+          bbox,
+          datetime: `${dateFrom}T00:00:00Z/${dateTo}T23:59:59Z`,
+          collections: ["planetscope"],
+          limit: 20,
+          filter: {
+            op: "<=",
+            args: [{ property: "eo:cloud_cover" }, 30],
+          },
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          timeout: 15000,
+        }
+      );
+
+      return (response.data?.features || []).map((f) => ({
+        id: f.id,
+        date: f.properties?.datetime?.split("T")[0],
+        satellite: "PlanetScope",
+        resolution: "3m",
+        cloud_cover: f.properties?.["eo:cloud_cover"],
+      }));
+    } catch (err) {
+      console.error("[PlanetScope] 검색 실패:", err.message);
+      return [];
+    }
+  }
+
+  /**
+   * PlanetScope NDVI 이미지 생성 (Processing API)
+   * @param {string} type - "ndvi" | "rgb"
+   */
+  async getPlanetScopeImage(bbox, date, type = "ndvi", width = 512, height = 512) {
+    const token = await this.getPlanetInsightsToken();
+    if (!token) return null;
+
+    const evalscript = type === "ndvi" ? PLANETSCOPE_NDVI_EVALSCRIPT : PLANETSCOPE_RGB_EVALSCRIPT;
+    const outputId = type === "ndvi" ? "ndvi_color" : "default";
+
+    try {
+      const response = await axios.post(
+        PLANET_INSIGHTS_PROCESS_URL,
+        {
+          input: {
+            bounds: {
+              bbox,
+              properties: { crs: "http://www.opengis.net/def/crs/EPSG/0/4326" },
+            },
+            data: [{
+              type: "planetscope",
+              dataFilter: {
+                timeRange: {
+                  from: `${date}T00:00:00Z`,
+                  to: `${date}T23:59:59Z`,
+                },
+                maxCloudCoverage: 30,
+              },
+            }],
+          },
+          output: {
+            width,
+            height,
+            responses: [
+              { identifier: outputId, format: { type: "image/png" } },
+            ],
+          },
+          evalscript,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            Accept: "image/png",
+          },
+          responseType: "arraybuffer",
+          timeout: 30000,
+        }
+      );
+      return Buffer.from(response.data).toString("base64");
+    } catch (err) {
+      console.error(`[PlanetScope] ${type} 이미지 생성 실패:`, err.message);
+      return null;
+    }
+  }
+
+  /**
+   * PlanetScope WMS 타일 URL 생성 (Leaflet에서 직접 사용)
+   * 프론트엔드에서 L.tileLayer.wms()로 오버레이 가능
+   */
+  getPlanetScopeWMSConfig() {
+    const clientId = process.env.PLANET_INSIGHTS_CLIENT_ID;
+    if (!clientId) return null;
+    return {
+      url: "https://services.sentinel-hub.com/ogc/wms/" + clientId,
+      layers: {
+        trueColor: "TRUE-COLOR",
+        ndvi: "NDVI",
+      },
+    };
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -674,6 +901,9 @@ class SatelliteService {
     const promises = targets.map(async (sat) => {
       try {
         switch (sat.id) {
+          case "planetscope":
+            results[sat.id] = await this.searchPlanetScope(bbox, dateFrom, dateTo);
+            break;
           case "planet-nicfi":
             results[sat.id] = await this.searchPlanetNICFI(bbox, dateFrom, dateTo);
             break;

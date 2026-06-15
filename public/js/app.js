@@ -815,93 +815,150 @@ window.showNDVIOverlay = function (courseId, date, satellite, ndviMean) {
 
 // ── Map Overlay: 실제 위성 영상 (Sentinel-2 WMS) ──────────────────
 
-window.showSatelliteImageOverlay = function (courseId, date, satellite) {
+window.showSatelliteImageOverlay = async function (courseId, date, satellite) {
   if (!state.fullMap) return;
   const course = state.courses.find((c) => c.id === Number(courseId));
   if (!course) return;
 
-  // Clear previous overlays
   clearMapOverlays();
 
   const boundary = course.boundary || [];
   state._mapOverlayLayer = L.layerGroup();
 
-  // Copernicus Sentinel-2 WMTS (무료, 인증 불필요)
-  // True Color (실화상) 타일
+  const statusEl = document.getElementById("overlayStatus");
+
+  // Load platform config to check what's available
+  let config;
+  try { config = await API.get("/api/config"); } catch (_) { config = {}; }
+
+  const hasPlanet = config.planetScope?.configured;
+
+  // ── Build WMS layers ──────────────────────────────────────────
+
+  // Copernicus Sentinel-2 (항상 사용 가능, 무료)
   const s2TrueColor = L.tileLayer.wms(
     "https://sh.dataspace.copernicus.eu/ogc/wms/ed64bf38-575d-4fee-83d0-59bd0c6f80b3", {
-      layers: "TRUE-COLOR-S2L2A",
-      format: "image/png",
-      transparent: true,
-      time: date,
-      maxcc: 30,
-      maxZoom: 19,
-      attribution: "Copernicus Sentinel-2",
-    }
-  );
-
-  // NDVI 레이어도 추가
+      layers: "TRUE-COLOR-S2L2A", format: "image/png", transparent: true,
+      time: date, maxcc: 30, maxZoom: 19, attribution: "Sentinel-2",
+    });
   const s2NDVI = L.tileLayer.wms(
     "https://sh.dataspace.copernicus.eu/ogc/wms/ed64bf38-575d-4fee-83d0-59bd0c6f80b3", {
-      layers: "NDVI",
-      format: "image/png",
-      transparent: true,
-      time: date,
-      maxcc: 30,
-      maxZoom: 19,
-      attribution: "Copernicus NDVI",
-    }
-  );
+      layers: "NDVI", format: "image/png", transparent: true,
+      time: date, maxcc: 30, maxZoom: 19, attribution: "Sentinel-2 NDVI",
+    });
 
-  // Add buttons to toggle between true color and NDVI
+  // PlanetScope (Planet Insights Platform - Education 계정)
+  let psTrueColor = null;
+  let psNDVI = null;
+  if (hasPlanet && config.planetScope.wms) {
+    const wmsUrl = config.planetScope.wms.url;
+    psTrueColor = L.tileLayer.wms(wmsUrl, {
+      layers: "TRUE-COLOR", format: "image/png", transparent: true,
+      time: date, maxcc: 30, maxZoom: 21, attribution: "PlanetScope 3m",
+    });
+    psNDVI = L.tileLayer.wms(wmsUrl, {
+      layers: "NDVI", format: "image/png", transparent: true,
+      time: date, maxcc: 30, maxZoom: 21, attribution: "PlanetScope NDVI",
+    });
+  }
+
+  // Default: show Sentinel-2 TrueColor first
   state._mapOverlayLayer.addLayer(s2TrueColor);
+  let activeSrc = "s2";
+  let activeType = "rgb";
 
-  // Boundary outline
+  // Boundary
   if (boundary.length >= 3) {
     L.polygon(boundary, {
       color: "#4ade80", weight: 2.5, fillColor: "transparent", fillOpacity: 0, dashArray: "8,4",
     }).addTo(state._mapOverlayLayer);
   }
 
-  // Toggle control
+  // ── Toggle control ────────────────────────────────────────────
+  const allLayers = { s2TrueColor, s2NDVI, psTrueColor, psNDVI };
+
   const toggleCtrl = L.control({ position: "topright" });
   toggleCtrl.onAdd = function () {
     const div = L.DomUtil.create("div", "sat-image-toggle");
-    div.innerHTML = `
-      <div style="background:rgba(30,33,48,0.92);padding:8px 10px;border-radius:8px;border:1px solid var(--border-color);font-size:11px;color:#e8eaf0">
-        <div style="font-weight:600;margin-bottom:6px">Sentinel-2 | ${date}</div>
-        <div style="display:flex;gap:4px">
-          <button id="btnTrueColor" style="padding:4px 8px;border-radius:4px;border:1px solid var(--accent-green);background:var(--accent-green);color:#0f1117;font-size:10px;cursor:pointer;font-family:inherit">실화상 (RGB)</button>
-          <button id="btnNDVI" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border-color);background:var(--bg-input);color:#e8eaf0;font-size:10px;cursor:pointer;font-family:inherit">NDVI 영상</button>
-        </div>
-        <div style="margin-top:4px;color:#9ba1b7;font-size:9px">Copernicus Data Space (무료)</div>
-      </div>
-    `;
     L.DomEvent.disableClickPropagation(div);
 
-    // Attach events after DOM insertion
+    div.innerHTML = `
+      <div style="background:rgba(30,33,48,0.95);padding:10px 12px;border-radius:8px;border:1px solid var(--border-color);font-size:11px;color:#e8eaf0;min-width:180px">
+        <div style="font-weight:600;margin-bottom:8px;font-size:12px">위성 영상 선택 | ${date}</div>
+
+        <!-- Source selector -->
+        <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">위성 소스</div>
+        <div style="display:flex;gap:4px;margin-bottom:8px" id="srcBtnGroup">
+          <button class="ovl-btn active" data-src="s2">Sentinel-2 (10m)</button>
+          ${hasPlanet ? '<button class="ovl-btn" data-src="ps">PlanetScope (3m)</button>' : ''}
+        </div>
+
+        <!-- Type selector -->
+        <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">영상 유형</div>
+        <div style="display:flex;gap:4px" id="typeBtnGroup">
+          <button class="ovl-btn active" data-type="rgb">실화상 (RGB)</button>
+          <button class="ovl-btn" data-type="ndvi">NDVI 영상</button>
+        </div>
+
+        <div style="margin-top:6px;color:#9ba1b7;font-size:9px" id="ovlSourceLabel">Copernicus (무료)</div>
+      </div>
+    `;
+
     setTimeout(() => {
-      const btnTC = document.getElementById("btnTrueColor");
-      const btnNDVI = document.getElementById("btnNDVI");
-      if (btnTC) btnTC.addEventListener("click", () => {
-        state._mapOverlayLayer.removeLayer(s2NDVI);
-        state._mapOverlayLayer.addLayer(s2TrueColor);
-        btnTC.style.background = "var(--accent-green)"; btnTC.style.color = "#0f1117"; btnTC.style.borderColor = "var(--accent-green)";
-        btnNDVI.style.background = "var(--bg-input)"; btnNDVI.style.color = "#e8eaf0"; btnNDVI.style.borderColor = "var(--border-color)";
+      // Source buttons
+      div.querySelectorAll('#srcBtnGroup .ovl-btn').forEach((btn) => {
+        btn.addEventListener("click", () => {
+          div.querySelectorAll('#srcBtnGroup .ovl-btn').forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          activeSrc = btn.dataset.src;
+          updateOverlayLayer();
+        });
       });
-      if (btnNDVI) btnNDVI.addEventListener("click", () => {
-        state._mapOverlayLayer.removeLayer(s2TrueColor);
-        state._mapOverlayLayer.addLayer(s2NDVI);
-        btnNDVI.style.background = "var(--accent-green)"; btnNDVI.style.color = "#0f1117"; btnNDVI.style.borderColor = "var(--accent-green)";
-        btnTC.style.background = "var(--bg-input)"; btnTC.style.color = "#e8eaf0"; btnTC.style.borderColor = "var(--border-color)";
+      // Type buttons
+      div.querySelectorAll('#typeBtnGroup .ovl-btn').forEach((btn) => {
+        btn.addEventListener("click", () => {
+          div.querySelectorAll('#typeBtnGroup .ovl-btn').forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          activeType = btn.dataset.type;
+          updateOverlayLayer();
+        });
       });
     }, 100);
 
     return div;
   };
+
+  function updateOverlayLayer() {
+    // Remove all imagery layers
+    Object.values(allLayers).forEach((l) => { if (l) state._mapOverlayLayer.removeLayer(l); });
+
+    let layer = null;
+    let label = "";
+    if (activeSrc === "ps" && hasPlanet) {
+      layer = activeType === "ndvi" ? psNDVI : psTrueColor;
+      label = "PlanetScope 3m (Education)";
+    } else {
+      layer = activeType === "ndvi" ? s2NDVI : s2TrueColor;
+      label = "Copernicus Sentinel-2 (무료)";
+    }
+
+    if (layer) {
+      state._mapOverlayLayer.addLayer(layer);
+      layer.once("load", () => {
+        if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-green)">${activeSrc === "ps" ? "PlanetScope" : "Sentinel-2"} ${activeType === "ndvi" ? "NDVI" : "실화상"} 표시 완료</span>`;
+      });
+      layer.once("tileerror", () => {
+        if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-orange)">해당 날짜 영상 없음</span>`;
+      });
+    }
+
+    const srcLabel = document.getElementById("ovlSourceLabel");
+    if (srcLabel) srcLabel.textContent = label;
+    if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-blue)">${label} 로드 중...</span>`;
+  }
+
   toggleCtrl.addTo(state.fullMap);
   state._mapToggleControl = toggleCtrl;
-
   state._mapOverlayLayer.addTo(state.fullMap);
 
   // Zoom to course
@@ -911,15 +968,11 @@ window.showSatelliteImageOverlay = function (courseId, date, satellite) {
     state.fullMap.setView([course.lat, course.lng], 15);
   }
 
-  const statusEl = document.getElementById("overlayStatus");
-  if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-blue)">Sentinel-2 위성영상 로드 중... (Copernicus WMS)</span>`;
-
-  // Detect tile load
+  if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-blue)">Sentinel-2 위성영상 로드 중...</span>`;
   s2TrueColor.on("load", () => {
-    if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-green)">Sentinel-2 실화상 표시 완료</span>`;
-  });
-  s2TrueColor.on("tileerror", () => {
-    if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-orange)">해당 날짜 영상 없음 - NDVI 히트맵으로 전환하세요</span>`;
+    if (statusEl && activeSrc === "s2" && activeType === "rgb") {
+      statusEl.innerHTML = `<span style="color:var(--accent-green)">Sentinel-2 실화상 표시 완료</span>`;
+    }
   });
 };
 

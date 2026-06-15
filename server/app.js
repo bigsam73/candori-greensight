@@ -23,16 +23,40 @@ app.use("/api/golf-courses", golfCourseRoutes);
 app.use("/api/ndvi", ndviRoutes);
 app.use("/api/alerts", alertRoutes);
 
-// Sentinel Hub configuration endpoint
+// Platform configuration endpoint (위성 인증 상태)
 app.get("/api/config", (req, res) => {
+  const planetWms = satelliteService.getPlanetScopeWMSConfig();
   res.json({
-    sentinelHubClientId: process.env.SENTINEL_HUB_CLIENT_ID || "",
-    sentinelHubClientSecret: process.env.SENTINEL_HUB_CLIENT_SECRET || "",
-    // Copernicus Browser (free, no key needed for WMS)
-    useFreeWMS: true,
-    wmsUrl:
-      "https://services.sentinel-hub.com/ogc/wms/",
+    sentinelHub: {
+      configured: !!(process.env.SENTINEL_HUB_CLIENT_ID && process.env.SENTINEL_HUB_CLIENT_SECRET),
+    },
+    planetScope: {
+      configured: !!(process.env.PLANET_INSIGHTS_CLIENT_ID && process.env.PLANET_INSIGHTS_CLIENT_SECRET),
+      wms: planetWms,
+    },
+    planetNICFI: {
+      configured: !!process.env.PLANET_API_KEY,
+    },
+    copernicus: {
+      wmsUrl: "https://sh.dataspace.copernicus.eu/ogc/wms/ed64bf38-575d-4fee-83d0-59bd0c6f80b3",
+      configured: true,
+    },
   });
+});
+
+// PlanetScope 이미지 요청 엔드포인트
+app.post("/api/planet/image", async (req, res) => {
+  const { bbox, date, type = "ndvi", width = 512, height = 512 } = req.body;
+  try {
+    const image = await satelliteService.getPlanetScopeImage(bbox, date, type, width, height);
+    if (image) {
+      res.json({ image: `data:image/png;base64,${image}`, type, date });
+    } else {
+      res.json({ image: null, message: "PlanetScope 인증 정보가 없거나 해당 날짜 영상이 없습니다." });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Health check
