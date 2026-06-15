@@ -2621,12 +2621,20 @@ function updateMultiBoundaryInfo() {
 
   const totalArea = layers.reduce((sum, l) => sum + parseInt(l.area.replace(/,/g, "")) || 0, 0);
   infoEl.innerHTML = `
-    <div style="color:var(--accent-green);margin-bottom:4px">${layers.length}개 코스 영역</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <span style="color:var(--accent-green)">${layers.length}개 코스 영역</span>
+      <button onclick="clearAllBoundaries()" style="background:none;border:none;color:var(--accent-red);cursor:pointer;font-size:10px;font-family:inherit;padding:2px 4px;display:flex;align-items:center;gap:2px">
+        <span class="material-icons-outlined" style="font-size:12px">delete_sweep</span>전체삭제
+      </button>
+    </div>
     ${layers.map((l, i) => `
-      <div style="display:flex;align-items:center;gap:4px;padding:2px 0;border-bottom:1px solid var(--border-color)">
+      <div style="display:flex;align-items:center;gap:4px;padding:3px 0;border-bottom:1px solid var(--border-color)">
         <div style="width:8px;height:8px;border-radius:2px;background:${POLY_COLORS[i % POLY_COLORS.length]};flex-shrink:0"></div>
-        <input type="text" value="${l.name}" style="flex:1;background:transparent;border:none;color:var(--text-primary);font-size:10px;padding:2px;outline:none" onchange="renamePolygon(${i}, this.value)">
-        <span style="font-size:9px;color:var(--text-muted)">${l.area}m&sup2;</span>
+        <input type="text" value="${l.name}" style="flex:1;background:transparent;border:none;color:var(--text-primary);font-size:10px;padding:2px;outline:none;min-width:0" onchange="renamePolygon(${i}, this.value)">
+        <span style="font-size:9px;color:var(--text-muted);white-space:nowrap">${l.area}m&sup2;</span>
+        <button onclick="removePolygon(${i})" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0;display:flex;align-items:center;flex-shrink:0" title="이 영역 삭제">
+          <span class="material-icons-outlined" style="font-size:14px">close</span>
+        </button>
       </div>
     `).join("")}
     <div style="margin-top:4px;font-size:9px;color:var(--text-muted)">총 면적: ~${totalArea.toLocaleString()} m&sup2;</div>
@@ -2646,6 +2654,27 @@ window.renamePolygon = function (index, newName) {
     }
     i++;
   });
+  updateMultiBoundaryInfo();
+};
+
+window.removePolygon = function (index) {
+  if (!editDrawnItems) return;
+  let i = 0;
+  let target = null;
+  editDrawnItems.eachLayer((layer) => {
+    if (i === index) target = layer;
+    i++;
+  });
+  if (target) {
+    editDrawnItems.removeLayer(target);
+    updateMultiBoundaryInfo();
+  }
+};
+
+window.clearAllBoundaries = function () {
+  if (!editDrawnItems) return;
+  if (!confirm("모든 영역을 삭제하시겠습니까?")) return;
+  editDrawnItems.clearLayers();
   updateMultiBoundaryInfo();
 };
 
