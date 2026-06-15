@@ -25,14 +25,17 @@ app.use("/api/alerts", alertRoutes);
 
 // Platform configuration endpoint (위성 인증 상태)
 app.get("/api/config", (req, res) => {
-  const planetWms = satelliteService.getPlanetScopeWMSConfig();
+  const psStatus = satelliteService.getPlanetScopeStatus();
   res.json({
     sentinelHub: {
       configured: !!(process.env.SENTINEL_HUB_CLIENT_ID && process.env.SENTINEL_HUB_CLIENT_SECRET),
     },
     planetScope: {
-      configured: !!(process.env.PLANET_INSIGHTS_CLIENT_ID && process.env.PLANET_INSIGHTS_CLIENT_SECRET),
-      wms: planetWms,
+      configured: psStatus.configured,
+      clientId: psStatus.clientId,
+      // Processing API로 직접 이미지 요청 (WMS 대신)
+      imageEndpoint: "/api/planet/image",
+      searchEndpoint: "/api/planet/search",
     },
     planetNICFI: {
       configured: !!process.env.PLANET_API_KEY,
@@ -44,18 +47,51 @@ app.get("/api/config", (req, res) => {
   });
 });
 
-// PlanetScope 이미지 요청 엔드포인트
+// PlanetScope 연결 테스트
+app.get("/api/planet/test", async (req, res) => {
+  try {
+    const result = await satelliteService.testPlanetConnection();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PlanetScope 이미지 요청 (NDVI 또는 RGB)
 app.post("/api/planet/image", async (req, res) => {
   const { bbox, date, type = "ndvi", width = 512, height = 512 } = req.body;
   try {
     const image = await satelliteService.getPlanetScopeImage(bbox, date, type, width, height);
     if (image) {
-      res.json({ image: `data:image/png;base64,${image}`, type, date });
+      res.json({
+        ok: true,
+        image: `data:image/png;base64,${image}`,
+        type,
+        date,
+        resolution: "3m",
+        satellite: "PlanetScope",
+      });
     } else {
-      res.json({ image: null, message: "PlanetScope 인증 정보가 없거나 해당 날짜 영상이 없습니다." });
+      res.json({
+        ok: false,
+        image: null,
+        message: "PlanetScope 인증 정보가 없거나 해당 날짜/지역에 영상이 없습니다.",
+        guide: "insights.planet.com → Settings → OAuth Clients 에서 키를 발급받아 .env에 입력하세요.",
+      });
     }
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// PlanetScope Catalog 검색
+app.post("/api/planet/search", async (req, res) => {
+  const { bbox, dateFrom, dateTo } = req.body;
+  try {
+    const results = await satelliteService.searchPlanetScope(bbox, dateFrom, dateTo);
+    res.json({ ok: true, count: results.length, results });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

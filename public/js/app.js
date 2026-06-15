@@ -725,11 +725,21 @@ function showSelectedDateDetail(course, record) {
     <div style="display:flex;gap:6px;margin-top:10px">
       <button class="btn btn-primary btn-sm" style="flex:1;justify-content:center" onclick="showNDVIOverlay('${course.id}', '${record.date}', '${record.satellite}', ${record.ndvi_mean})">
         <span class="material-icons-outlined">layers</span>
-        NDVI 지도 보기
+        NDVI 히트맵
       </button>
       <button class="btn btn-secondary btn-sm" style="flex:1;justify-content:center" onclick="showSatelliteImageOverlay('${course.id}', '${record.date}', '${record.satellite}')">
         <span class="material-icons-outlined">satellite</span>
-        실화상 보기
+        위성영상 (WMS)
+      </button>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <button class="btn btn-sm" style="flex:1;justify-content:center;background:rgba(251,146,60,0.15);color:#fb923c;border:1px solid rgba(251,146,60,0.3)" onclick="requestPlanetImage('${course.id}', '${record.date}', 'ndvi')">
+        <span class="material-icons-outlined">eco</span>
+        Planet NDVI
+      </button>
+      <button class="btn btn-sm" style="flex:1;justify-content:center;background:rgba(96,165,250,0.15);color:#60a5fa;border:1px solid rgba(96,165,250,0.3)" onclick="requestPlanetImage('${course.id}', '${record.date}', 'rgb')">
+        <span class="material-icons-outlined">image</span>
+        Planet RGB
       </button>
     </div>
     <div id="overlayStatus" style="margin-top:6px;font-size:10px;color:var(--text-muted)"></div>
@@ -847,20 +857,10 @@ window.showSatelliteImageOverlay = async function (courseId, date, satellite) {
       time: date, maxcc: 30, maxZoom: 19, attribution: "Sentinel-2 NDVI",
     });
 
-  // PlanetScope (Planet Insights Platform - Education 계정)
+  // PlanetScope는 Processing API로 직접 요청 (WMS 대신)
+  // 우측 패널의 "Planet NDVI" / "Planet RGB" 버튼 사용
   let psTrueColor = null;
   let psNDVI = null;
-  if (hasPlanet && config.planetScope.wms) {
-    const wmsUrl = config.planetScope.wms.url;
-    psTrueColor = L.tileLayer.wms(wmsUrl, {
-      layers: "TRUE-COLOR", format: "image/png", transparent: true,
-      time: date, maxcc: 30, maxZoom: 21, attribution: "PlanetScope 3m",
-    });
-    psNDVI = L.tileLayer.wms(wmsUrl, {
-      layers: "NDVI", format: "image/png", transparent: true,
-      time: date, maxcc: 30, maxZoom: 21, attribution: "PlanetScope NDVI",
-    });
-  }
 
   // Default: show Sentinel-2 TrueColor first
   state._mapOverlayLayer.addLayer(s2TrueColor);
@@ -974,6 +974,95 @@ window.showSatelliteImageOverlay = async function (courseId, date, satellite) {
       statusEl.innerHTML = `<span style="color:var(--accent-green)">Sentinel-2 실화상 표시 완료</span>`;
     }
   });
+};
+
+// ── PlanetScope Processing API 직접 요청 (NDVI / RGB) ─────────
+
+window.requestPlanetImage = async function (courseId, date, type) {
+  if (!state.fullMap) return;
+  const course = state.courses.find((c) => c.id === Number(courseId));
+  if (!course) return;
+
+  const statusEl = document.getElementById("overlayStatus");
+  const typeLabel = type === "ndvi" ? "NDVI" : "실화상(RGB)";
+  if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-orange)"><div class="spinner" style="width:12px;height:12px;display:inline-block;margin-right:4px;vertical-align:middle"></div>PlanetScope ${typeLabel} 요청 중... (3m)</span>`;
+
+  const boundary = course.boundary || [];
+  let bbox;
+  if (boundary.length >= 3) {
+    const lats = boundary.map((p) => p[0]);
+    const lngs = boundary.map((p) => p[1]);
+    bbox = [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
+  } else {
+    const d = 0.005;
+    bbox = [course.lng - d, course.lat - d, course.lng + d, course.lat + d];
+  }
+
+  try {
+    const result = await API.post("/api/planet/image", {
+      bbox,
+      date,
+      type,
+      width: 1024,
+      height: 1024,
+    });
+
+    if (result.ok && result.image) {
+      // Clear previous overlay
+      clearMapOverlays();
+      state._mapOverlayLayer = L.layerGroup();
+
+      // Image overlay on the map
+      const imageBounds = [[bbox[1], bbox[0]], [bbox[3], bbox[2]]];
+      const imgOverlay = L.imageOverlay(result.image, imageBounds, {
+        opacity: 0.9,
+        interactive: true,
+      }).addTo(state._mapOverlayLayer);
+
+      // Boundary
+      if (boundary.length >= 3) {
+        L.polygon(boundary, {
+          color: type === "ndvi" ? "#4ade80" : "#60a5fa",
+          weight: 2.5, fillColor: "transparent", fillOpacity: 0, dashArray: "8,4",
+        }).addTo(state._mapOverlayLayer);
+      }
+
+      // Legend
+      const legend = L.control({ position: "bottomleft" });
+      legend.onAdd = function () {
+        const div = L.DomUtil.create("div", "ndvi-map-legend");
+        div.innerHTML = `
+          <div style="background:rgba(30,33,48,0.92);padding:8px 10px;border-radius:8px;border:1px solid var(--border-color);font-size:10px;color:#e8eaf0">
+            <div style="font-weight:600;margin-bottom:4px">PlanetScope ${typeLabel} | ${date}</div>
+            <div style="color:#fb923c">3m 해상도 (Education)</div>
+            ${type === "ndvi" ? `
+              <div style="display:flex;gap:3px;align-items:center;margin-top:4px">
+                <span style="color:#d32f2f">0.0</span>
+                <div style="width:100px;height:8px;border-radius:4px;background:linear-gradient(to right,#8b0000,#d32f2f,#ff9800,#cddc39,#8bc34a,#4caf50,#388e3c,#1b5e20)"></div>
+                <span style="color:#1b5e20">1.0</span>
+              </div>
+            ` : `<div style="margin-top:4px;color:#9ba1b7">자연색 실화상</div>`}
+          </div>
+        `;
+        return div;
+      };
+      legend.addTo(state.fullMap);
+      state._mapLegendControl = legend;
+
+      state._mapOverlayLayer.addTo(state.fullMap);
+      state.fullMap.fitBounds(imageBounds, { padding: [20, 20] });
+
+      if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-green)">PlanetScope ${typeLabel} 표시 완료 (3m)</span>`;
+    } else {
+      if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-red)">${result.message || "PlanetScope 영상을 가져올 수 없습니다."}</span>`;
+      if (result.guide && statusEl) {
+        statusEl.innerHTML += `<br><span style="color:var(--text-muted);font-size:9px">${result.guide}</span>`;
+      }
+    }
+  } catch (err) {
+    console.error("Planet 이미지 요청 실패:", err);
+    if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-red)">Planet API 요청 실패: ${err.message || "네트워크 오류"}</span>`;
+  }
 };
 
 // ── Clear all map overlays ────────────────────────────────────────

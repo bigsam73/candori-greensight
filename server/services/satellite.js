@@ -316,46 +316,42 @@ function evaluatePixel(sample) {
 `;
 
 // PlanetScope NDVI Evalscript (Planet Insights Processing API)
+// PlanetScope 8-band: coastal_blue, blue, green_i, green, yellow, red, rededge, nir
 const PLANETSCOPE_NDVI_EVALSCRIPT = `
 //VERSION=3
 function setup() {
   return {
-    input: [{ bands: ["Blue", "Green", "Red", "NIR"], units: "DN" }],
-    output: [
-      { id: "ndvi", bands: 1, sampleType: "FLOAT32" },
-      { id: "ndvi_color", bands: 3, sampleType: "AUTO" }
-    ]
+    input: [{ bands: ["nir", "red"], units: "REFLECTANCE" }],
+    output: { bands: 3, sampleType: "AUTO" }
   };
 }
-
-function evaluatePixel(sample) {
-  let ndvi = (sample.NIR - sample.Red) / (sample.NIR + sample.Red);
-  let r, g, b;
-  if (ndvi < -0.1)      { r = 120; g = 120; b = 120; }
-  else if (ndvi < 0.0)  { r = 160; g = 100; b =  80; }
-  else if (ndvi < 0.15) { r = 200; g = 130; b =  80; }
-  else if (ndvi < 0.25) { r = 210; g = 170; b =  60; }
-  else if (ndvi < 0.35) { r = 220; g = 210; b =  50; }
-  else if (ndvi < 0.45) { r = 180; g = 210; b =  50; }
-  else if (ndvi < 0.55) { r = 130; g = 200; b =  60; }
-  else if (ndvi < 0.65) { r =  80; g = 180; b =  50; }
-  else if (ndvi < 0.75) { r =  40; g = 150; b =  30; }
-  else                  { r =  10; g = 110; b =  10; }
-  return { ndvi: [ndvi], ndvi_color: [r, g, b] };
+function evaluatePixel(s) {
+  let ndvi = (s.nir - s.red) / (s.nir + s.red + 0.0001);
+  // Color ramp
+  if (ndvi < 0.0)  return [0.5, 0.4, 0.3];
+  if (ndvi < 0.15) return [0.8, 0.5, 0.3];
+  if (ndvi < 0.25) return [0.82, 0.67, 0.23];
+  if (ndvi < 0.35) return [0.86, 0.82, 0.2];
+  if (ndvi < 0.45) return [0.7, 0.82, 0.2];
+  if (ndvi < 0.55) return [0.5, 0.78, 0.23];
+  if (ndvi < 0.65) return [0.3, 0.7, 0.2];
+  if (ndvi < 0.75) return [0.16, 0.59, 0.12];
+  return [0.04, 0.43, 0.04];
 }
 `;
 
-// PlanetScope True Color Evalscript
+// PlanetScope True Color (RGB) Evalscript
 const PLANETSCOPE_RGB_EVALSCRIPT = `
 //VERSION=3
 function setup() {
   return {
-    input: [{ bands: ["Blue", "Green", "Red"] }],
-    output: { bands: 3 }
+    input: [{ bands: ["red", "green", "blue"], units: "REFLECTANCE" }],
+    output: { bands: 3, sampleType: "AUTO" }
   };
 }
-function evaluatePixel(sample) {
-  return [sample.Red * 3.5, sample.Green * 3.5, sample.Blue * 3.5];
+function evaluatePixel(s) {
+  let gain = 3.5;
+  return [s.red * gain, s.green * gain, s.blue * gain];
 }
 `;
 
@@ -410,7 +406,7 @@ class SatelliteService {
 
   /**
    * Planet Insights Platform OAuth2 토큰 취득
-   * insights.planet.com → Settings → OAuth Clients 에서 발급
+   * insights.planet.com → Settings → OAuth Clients
    */
   async getPlanetInsightsToken() {
     if (this.planetInsightsToken && this.planetInsightsTokenExpiry > Date.now()) {
@@ -438,13 +434,49 @@ class SatelliteService {
       console.log("[PlanetScope] OAuth2 토큰 취득 성공");
       return this.planetInsightsToken;
     } catch (err) {
-      console.error("[PlanetScope] 인증 실패:", err.message);
+      console.error("[PlanetScope] 인증 실패:", err.response?.data || err.message);
       return null;
     }
   }
 
   /**
-   * PlanetScope 영상 검색 (Catalog API)
+   * PlanetScope 인증 테스트 - 토큰 발급 가능한지 확인
+   */
+  async testPlanetConnection() {
+    const clientId = process.env.PLANET_INSIGHTS_CLIENT_ID;
+    const clientSecret = process.env.PLANET_INSIGHTS_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return { ok: false, error: "PLANET_INSIGHTS_CLIENT_ID / SECRET이 .env에 설정되지 않았습니다." };
+    }
+
+    try {
+      const token = await this.getPlanetInsightsToken();
+      if (!token) return { ok: false, error: "토큰 발급 실패" };
+
+      // Catalog 접근 테스트 - 서울 근처 최근 30일
+      const testBbox = [126.9, 37.4, 127.1, 37.6];
+      const dateTo = new Date().toISOString().split("T")[0];
+      const dateFrom = new Date(Date.now() - 30 * 86400000).toISOString().split("T")[0];
+      const searchResult = await this.searchPlanetScope(testBbox, dateFrom, dateTo);
+
+      return {
+        ok: true,
+        token_length: token.length,
+        test_search: {
+          bbox: testBbox,
+          period: `${dateFrom} ~ ${dateTo}`,
+          results: searchResult.length,
+          first: searchResult[0] || null,
+        },
+      };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  /**
+   * PlanetScope Catalog 검색 (Sentinel Hub Catalog API)
+   * Collection: "planetscope" (Planet Insights Platform에서 사용 가능)
    */
   async searchPlanetScope(bbox, dateFrom, dateTo) {
     const token = await this.getPlanetInsightsToken();
@@ -458,10 +490,6 @@ class SatelliteService {
           datetime: `${dateFrom}T00:00:00Z/${dateTo}T23:59:59Z`,
           collections: ["planetscope"],
           limit: 20,
-          filter: {
-            op: "<=",
-            args: [{ property: "eo:cloud_cover" }, 30],
-          },
         },
         {
           headers: {
@@ -480,21 +508,25 @@ class SatelliteService {
         cloud_cover: f.properties?.["eo:cloud_cover"],
       }));
     } catch (err) {
-      console.error("[PlanetScope] 검색 실패:", err.message);
+      // 에러 상세 로깅
+      const detail = err.response?.data
+        ? (typeof err.response.data === "string" ? err.response.data : JSON.stringify(err.response.data).substring(0, 500))
+        : err.message;
+      console.error("[PlanetScope] Catalog 검색 실패:", detail);
       return [];
     }
   }
 
   /**
-   * PlanetScope NDVI 이미지 생성 (Processing API)
+   * PlanetScope 이미지 생성 (Processing API)
    * @param {string} type - "ndvi" | "rgb"
+   * @returns {string|null} base64 PNG
    */
   async getPlanetScopeImage(bbox, date, type = "ndvi", width = 512, height = 512) {
     const token = await this.getPlanetInsightsToken();
     if (!token) return null;
 
     const evalscript = type === "ndvi" ? PLANETSCOPE_NDVI_EVALSCRIPT : PLANETSCOPE_RGB_EVALSCRIPT;
-    const outputId = type === "ndvi" ? "ndvi_color" : "default";
 
     try {
       const response = await axios.post(
@@ -519,9 +551,7 @@ class SatelliteService {
           output: {
             width,
             height,
-            responses: [
-              { identifier: outputId, format: { type: "image/png" } },
-            ],
+            responses: [{ identifier: "default", format: { type: "image/png" } }],
           },
           evalscript,
         },
@@ -537,24 +567,22 @@ class SatelliteService {
       );
       return Buffer.from(response.data).toString("base64");
     } catch (err) {
-      console.error(`[PlanetScope] ${type} 이미지 생성 실패:`, err.message);
+      const status = err.response?.status;
+      const detail = err.response?.data
+        ? Buffer.from(err.response.data).toString("utf-8").substring(0, 300)
+        : err.message;
+      console.error(`[PlanetScope] ${type} 이미지 (${status}):`, detail);
       return null;
     }
   }
 
-  /**
-   * PlanetScope WMS 타일 URL 생성 (Leaflet에서 직접 사용)
-   * 프론트엔드에서 L.tileLayer.wms()로 오버레이 가능
-   */
-  getPlanetScopeWMSConfig() {
+  /** PlanetScope 연결 상태 */
+  getPlanetScopeStatus() {
     const clientId = process.env.PLANET_INSIGHTS_CLIENT_ID;
-    if (!clientId) return null;
+    const clientSecret = process.env.PLANET_INSIGHTS_CLIENT_SECRET;
     return {
-      url: "https://services.sentinel-hub.com/ogc/wms/" + clientId,
-      layers: {
-        trueColor: "TRUE-COLOR",
-        ndvi: "NDVI",
-      },
+      configured: !!(clientId && clientSecret),
+      clientId: clientId ? clientId.substring(0, 8) + "..." : null,
     };
   }
 
