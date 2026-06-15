@@ -95,6 +95,33 @@ app.post("/api/planet/search", async (req, res) => {
   }
 });
 
+// Planet Basemaps - 사용 가능한 모자이크 목록
+app.get("/api/planet/basemaps", async (req, res) => {
+  try {
+    const mosaics = await satelliteService.listPlanetBasemaps();
+    res.json({ ok: true, count: mosaics.length, mosaics });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Planet Basemaps - 타일 URL 정보 (프론트엔드에서 Leaflet 레이어로 사용)
+app.get("/api/planet/basemap-tile-url", (req, res) => {
+  const apiKey = process.env.PLANET_API_KEY;
+  if (!apiKey) {
+    return res.json({ ok: false, message: "PLANET_API_KEY not configured" });
+  }
+  const { mosaic } = req.query;
+  const mosaicName = mosaic || "global_monthly_2026_05_mosaic";
+  res.json({
+    ok: true,
+    tileUrl: `https://tiles.planet.com/basemaps/v1/planet-tiles/${mosaicName}/gmap/{z}/{x}/{y}.png?api_key=${apiKey}`,
+    mosaicName,
+    resolution: "4.77m",
+    attribution: "Planet Labs Basemaps",
+  });
+});
+
 // Health check
 app.get("/api/health", (req, res) => {
   const catalog = satelliteService.getCatalog();

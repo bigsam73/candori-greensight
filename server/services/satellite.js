@@ -591,20 +591,55 @@ class SatelliteService {
   // ════════════════════════════════════════════════════════════════
 
   /**
-   * Planet NICFI 모자이크 검색
-   * 무료: 비상업/연구 목적 가입 시 전 세계 4.77m 월간 모자이크
-   * 등록: planet.com/nicfi → API Key 발급
+   * Planet Basemaps 모자이크 목록 조회 (global_monthly 시리즈)
+   * 한국 포함 전 세계 4.77m 월간 모자이크
+   */
+  async listPlanetBasemaps() {
+    const apiKey = process.env.PLANET_API_KEY;
+    if (!apiKey) return [];
+
+    try {
+      let allMosaics = [];
+      let nextUrl = `${PLANET_API_URL}?_page_size=200`;
+      while (nextUrl) {
+        const r = await axios.get(nextUrl, {
+          auth: { username: apiKey, password: "" },
+          timeout: 15000,
+        });
+        allMosaics = allMosaics.concat(r.data.mosaics || []);
+        nextUrl = r.data._links?._next || null;
+        if (allMosaics.length > 300) break;
+      }
+
+      return allMosaics
+        .filter((m) => m.name.startsWith("global_monthly"))
+        .sort((a, b) => b.name.localeCompare(a.name))
+        .map((m) => ({
+          name: m.name,
+          date_from: m.first_acquired?.split("T")[0],
+          date_to: m.last_acquired?.split("T")[0],
+          resolution: m.grid?.resolution,
+          tileUrl: `https://tiles.planet.com/basemaps/v1/planet-tiles/${m.name}/gmap/{z}/{x}/{y}.png?api_key=${apiKey}`,
+        }));
+    } catch (err) {
+      console.error("[Planet Basemaps] 목록 조회 실패:", err.message);
+      return [];
+    }
+  }
+
+  /**
+   * Planet NICFI 모자이크 검색 (날짜 필터)
    */
   async searchPlanetNICFI(bbox, dateFrom, dateTo) {
     const apiKey = process.env.PLANET_API_KEY;
     if (!apiKey) {
-      console.log("[Planet] API Key 없음 - planet.com/nicfi 가입 필요");
+      console.log("[Planet] API Key 없음");
       return [];
     }
 
     try {
       const response = await axios.get(PLANET_API_URL, {
-        params: { name__contains: "planet_medres_normalized_analytic" },
+        params: { name__contains: "global_monthly", _page_size: 100 },
         auth: { username: apiKey, password: "" },
         timeout: 15000,
       });
@@ -619,12 +654,12 @@ class SatelliteService {
           id: m.id,
           name: m.name,
           date: m.first_acquired,
-          satellite: "Planet NICFI",
+          satellite: "Planet Basemaps",
           resolution: "4.77m",
-          quad_url: m._links?.quads,
+          tileUrl: `https://tiles.planet.com/basemaps/v1/planet-tiles/${m.name}/gmap/{z}/{x}/{y}.png?api_key=${apiKey}`,
         }));
     } catch (err) {
-      console.error("[Planet NICFI] 검색 실패:", err.message);
+      console.error("[Planet Basemaps] 검색 실패:", err.message);
       return [];
     }
   }

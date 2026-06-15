@@ -409,6 +409,54 @@ function addTileLayers(map, type = "dark") {
 
   dark.addTo(map);
   map._layers_custom = { dark, satellite, osm, googleRoad, googleSat, googleHybrid, googleTerrain };
+
+  // Planet Basemaps를 비동기로 로드 (API Key가 있을 때만)
+  loadPlanetBasemapLayer(map);
+}
+
+async function loadPlanetBasemapLayer(map) {
+  try {
+    const config = await API.get("/api/planet/basemap-tile-url");
+    if (config.ok && config.tileUrl) {
+      const planetLayer = L.tileLayer(config.tileUrl, {
+        maxZoom: 20,
+        attribution: "Planet 4.77m",
+      });
+      map._layers_custom.planet = planetLayer;
+      map._planetTileUrlTemplate = config.tileUrl.replace(config.mosaicName, "{mosaic}");
+
+      // Planet Basemaps 모자이크 목록 로드
+      const basemaps = await API.get("/api/planet/basemaps");
+      if (basemaps.ok && basemaps.mosaics?.length > 0) {
+        state._planetMosaics = basemaps.mosaics;
+        populatePlanetMosaicSelectors(basemaps.mosaics);
+      }
+    }
+  } catch (e) {
+    // Planet API Key 없으면 무시
+  }
+}
+
+function populatePlanetMosaicSelectors(mosaics) {
+  // 위성지도 뷰와 대시보드의 배경지도 드롭다운에 Planet 옵션 추가
+  ["fullMapLayer", "mapLayerSelect"].forEach((selId) => {
+    const sel = document.getElementById(selId);
+    if (!sel) return;
+    // 이미 Planet 옵션이 있으면 스킵
+    if (sel.querySelector('option[value^="planet-"]')) return;
+
+    const group = document.createElement("optgroup");
+    group.label = `Planet Basemaps (${mosaics.length})`;
+    // 최근 6개월만
+    mosaics.slice(0, 6).forEach((m) => {
+      const opt = document.createElement("option");
+      opt.value = "planet-" + m.name;
+      const label = m.name.replace("global_monthly_", "").replace("_mosaic", "").replace("_", "-");
+      opt.textContent = `Planet ${label} (4.77m)`;
+      group.appendChild(opt);
+    });
+    sel.appendChild(group);
+  });
 }
 
 function switchMapLayer(map, layerType) {
@@ -416,6 +464,28 @@ function switchMapLayer(map, layerType) {
   if (!layers) return;
 
   Object.values(layers).forEach((l) => map.removeLayer(l));
+
+  // Planet Basemaps (dynamic mosaic)
+  if (layerType.startsWith("planet-")) {
+    const mosaicName = layerType.replace("planet-", "");
+    if (map._planetTileUrlTemplate) {
+      const url = map._planetTileUrlTemplate.replace("{mosaic}", mosaicName);
+      const planetLayer = L.tileLayer(url, { maxZoom: 20, attribution: "Planet " + mosaicName });
+      // 이전 planet 레이어 교체
+      if (layers._activePlanet) map.removeLayer(layers._activePlanet);
+      layers._activePlanet = planetLayer;
+      planetLayer.addTo(map);
+    } else if (layers.planet) {
+      layers.planet.addTo(map);
+    }
+    return;
+  }
+
+  // Remove active planet layer if switching away
+  if (layers._activePlanet) {
+    map.removeLayer(layers._activePlanet);
+    layers._activePlanet = null;
+  }
 
   switch (layerType) {
     case "satellite":
