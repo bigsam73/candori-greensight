@@ -99,6 +99,7 @@ router.post("/", (req, res) => {
       };
       database._data.golf_courses.push(newCourse);
       database._save();
+      if (database._saveUserData) database._saveUserData();
     }
 
     // 1년치(365일) NDVI 시뮬레이션 데이터 자동 생성
@@ -155,6 +156,7 @@ router.put("/:id", (req, res) => {
         }
       }
       database._save();
+      if (database._saveUserData) database._saveUserData();
     }
 
     res.json({ message: "골프장 정보 수정 완료", id: Number(id) });
@@ -176,6 +178,7 @@ router.delete("/:id", (req, res) => {
       database._data.golf_courses = database._data.golf_courses.filter((c) => c.id !== Number(id));
       database._data.ndvi_records = database._data.ndvi_records.filter((r) => r.course_id !== Number(id));
       database._save();
+      if (database._saveUserData) database._saveUserData();
     }
     res.json({ message: "골프장 삭제 완료", id: Number(id) });
   } catch (err) {

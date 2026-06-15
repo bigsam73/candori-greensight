@@ -27,10 +27,11 @@ function createJsonStore() {
   const fs = require("fs");
   const dataDir = path.join(__dirname, "..", "data");
   const dbFile = path.join(dataDir, "golf_ndvi.json");
+  const userFile = path.join(dataDir, "user_data.json");
+  const backupDir = path.join(dataDir, "backups");
 
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-  }
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
 
   let data = {
     golf_courses: [],
@@ -39,11 +40,30 @@ function createJsonStore() {
     alerts: [],
   };
 
+  // 1) 메인 DB 파일 로드
   if (fs.existsSync(dbFile)) {
     try {
       data = JSON.parse(fs.readFileSync(dbFile, "utf-8"));
+    } catch (e) { /* use default */ }
+  }
+
+  // 2) 사용자 수정 데이터가 있으면 병합 (user_data가 우선)
+  if (fs.existsSync(userFile)) {
+    try {
+      const userData = JSON.parse(fs.readFileSync(userFile, "utf-8"));
+      if (userData.golf_courses && userData.golf_courses.length > 0) {
+        // 사용자 수정 골프장 → 기존 데이터에 merge (id 기준)
+        const userMap = new Map(userData.golf_courses.map((c) => [c.id, c]));
+        data.golf_courses = data.golf_courses.map((c) => userMap.has(c.id) ? { ...c, ...userMap.get(c.id) } : c);
+        // 사용자가 추가한 새 골프장 (기존에 없는 id)
+        const existingIds = new Set(data.golf_courses.map((c) => c.id));
+        userData.golf_courses.forEach((c) => {
+          if (!existingIds.has(c.id)) data.golf_courses.push(c);
+        });
+        console.log(`[DB] 사용자 데이터 병합: ${userMap.size}개 골프장`);
+      }
     } catch (e) {
-      /* use default */
+      console.error("[DB] user_data.json 로드 실패:", e.message);
     }
   }
 
@@ -51,10 +71,58 @@ function createJsonStore() {
     fs.writeFileSync(dbFile, JSON.stringify(data, null, 2), "utf-8");
   }
 
+  /**
+   * 사용자가 수정한 골프장 데이터를 별도 파일에 영구 저장
+   * 이 파일은 서버 재시작, seed 재생성, git pull 후에도 유지됨
+   */
+  function saveUserData() {
+    const userCourses = data.golf_courses.map((c) => ({
+      id: c.id,
+      name: c.name,
+      name_en: c.name_en,
+      lat: c.lat,
+      lng: c.lng,
+      address: c.address,
+      region: c.region,
+      holes: c.holes,
+      area_sqm: c.area_sqm,
+      boundary: c.boundary,
+      zones: c.zones,
+    }));
+
+    const userData = {
+      _version: 1,
+      _saved_at: new Date().toISOString(),
+      _description: "사용자 수정 데이터 - 이 파일은 삭제하지 마세요",
+      golf_courses: userCourses,
+    };
+
+    // 저장 전 백업 생성
+    if (fs.existsSync(userFile)) {
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19);
+      const backupFile = path.join(backupDir, `user_data_${ts}.json`);
+      try {
+        fs.copyFileSync(userFile, backupFile);
+        // 오래된 백업 정리 (최근 20개만 유지)
+        const backups = fs.readdirSync(backupDir)
+          .filter((f) => f.startsWith("user_data_"))
+          .sort()
+          .reverse();
+        backups.slice(20).forEach((f) => {
+          try { fs.unlinkSync(path.join(backupDir, f)); } catch (_) {}
+        });
+      } catch (_) {}
+    }
+
+    fs.writeFileSync(userFile, JSON.stringify(userData, null, 2), "utf-8");
+    console.log(`[DB] 사용자 데이터 저장: ${userCourses.length}개 골프장 → user_data.json`);
+  }
+
   return {
     _type: "json",
     _data: data,
     _save: save,
+    _saveUserData: saveUserData,
     prepare: () => ({
       run: () => {},
       all: () => [],
