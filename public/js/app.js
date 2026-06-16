@@ -834,35 +834,46 @@ function showSelectedDateDetail(course, record) {
       <div class="detail-label">위성 소스</div>
       <div class="detail-value">${record.satellite}</div>
     </div>
-    <div style="display:flex;gap:6px;margin-top:10px">
-      <button class="btn btn-primary btn-sm" style="flex:1;justify-content:center" onclick="showNDVIOverlay('${course.id}', '${record.date}', '${record.satellite}', ${record.ndvi_mean})">
-        <span class="material-icons-outlined">layers</span>
-        NDVI 히트맵
-      </button>
-      <button class="btn btn-secondary btn-sm" style="flex:1;justify-content:center" onclick="showSatelliteImageOverlay('${course.id}', '${record.date}', '${record.satellite}')">
-        <span class="material-icons-outlined">satellite</span>
-        위성영상 (WMS)
-      </button>
+    <!-- 식생 지수 선택 -->
+    <div style="margin-top:10px">
+      <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">식생 지수 선택 → 지도에 표시</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+        <button class="vi-btn" style="--vi-color:#4ade80" onclick="showIndexOverlay('${course.id}','${record.date}','ndvi',${record.ndvi_mean})">
+          <span class="vi-dot" style="background:#4ade80"></span>NDVI
+        </button>
+        <button class="vi-btn" style="--vi-color:#fb923c" onclick="showIndexOverlay('${course.id}','${record.date}','ndre',${record.ndvi_mean})">
+          <span class="vi-dot" style="background:#fb923c"></span>NDRE
+        </button>
+        <button class="vi-btn" style="--vi-color:#a78bfa" onclick="showIndexOverlay('${course.id}','${record.date}','gndvi',${record.ndvi_mean})">
+          <span class="vi-dot" style="background:#a78bfa"></span>GNDVI
+        </button>
+        <button class="vi-btn" style="--vi-color:#2dd4bf" onclick="showIndexOverlay('${course.id}','${record.date}','savi',${record.ndvi_mean})">
+          <span class="vi-dot" style="background:#2dd4bf"></span>SAVI
+        </button>
+        <button class="vi-btn" style="--vi-color:#60a5fa" onclick="showIndexOverlay('${course.id}','${record.date}','evi',${record.ndvi_mean})">
+          <span class="vi-dot" style="background:#60a5fa"></span>EVI
+        </button>
+        <button class="vi-btn" style="--vi-color:#f87171" onclick="showIndexOverlay('${course.id}','${record.date}','msavi2',${record.ndvi_mean})">
+          <span class="vi-dot" style="background:#f87171"></span>MSAVI2
+        </button>
+        <button class="vi-btn" style="--vi-color:#38bdf8" onclick="showIndexOverlay('${course.id}','${record.date}','ndmi',${record.ndvi_mean})">
+          <span class="vi-dot" style="background:#38bdf8"></span>NDMI
+        </button>
+        <button class="vi-btn" style="--vi-color:#4ade80" onclick="showIndexOverlay('${course.id}','${record.date}','cire',${record.ndvi_mean})">
+          <span class="vi-dot" style="background:#4ade80"></span>CIre
+        </button>
+        <button class="vi-btn" style="--vi-color:#86efac" onclick="showIndexOverlay('${course.id}','${record.date}','gli',${record.ndvi_mean})">
+          <span class="vi-dot" style="background:#86efac"></span>GLI
+        </button>
+        <button class="vi-btn" style="--vi-color:#e8eaf0" onclick="showSatelliteImageOverlay('${course.id}','${record.date}','${record.satellite}')">
+          <span class="vi-dot" style="background:#e8eaf0"></span>위성영상
+        </button>
+      </div>
     </div>
-    <div style="display:flex;gap:6px;margin-top:6px">
-      <button class="btn btn-sm" style="flex:1;justify-content:center;background:rgba(251,146,60,0.15);color:#fb923c;border:1px solid rgba(251,146,60,0.3)" onclick="requestPlanetImage('${course.id}', '${record.date}', 'ndvi')">
-        <span class="material-icons-outlined">eco</span>
-        Planet NDVI
-      </button>
-      <button class="btn btn-sm" style="flex:1;justify-content:center;background:rgba(96,165,250,0.15);color:#60a5fa;border:1px solid rgba(96,165,250,0.3)" onclick="requestPlanetImage('${course.id}', '${record.date}', 'rgb')">
-        <span class="material-icons-outlined">image</span>
-        Planet RGB
-      </button>
-    </div>
-    <div style="display:flex;gap:6px;margin-top:6px">
-      <button class="btn btn-sm" style="flex:1;justify-content:center;background:rgba(45,212,191,0.15);color:#2dd4bf;border:1px solid rgba(45,212,191,0.3)" onclick="requestSWCOverlay('${course.id}', '${record.date}')">
-        <span class="material-icons-outlined">water_drop</span>
-        토양수분
-      </button>
-      <button class="btn btn-sm" style="flex:1;justify-content:center;background:rgba(248,113,113,0.15);color:#f87171;border:1px solid rgba(248,113,113,0.3)" onclick="requestLSTOverlay('${course.id}', '${record.date}')">
-        <span class="material-icons-outlined">thermostat</span>
-        지표면온도
-      </button>
+    <!-- Planet / 환경 데이터 -->
+    <div style="display:flex;gap:4px;margin-top:6px">
+      <button class="vi-btn" style="flex:1;--vi-color:#fb923c" onclick="requestPlanetImage('${course.id}','${record.date}','ndvi')">Planet NDVI</button>
+      <button class="vi-btn" style="flex:1;--vi-color:#60a5fa" onclick="requestPlanetImage('${course.id}','${record.date}','rgb')">Planet RGB</button>
     </div>
     <div id="overlayStatus" style="margin-top:6px;font-size:10px;color:var(--text-muted)"></div>
   `;
@@ -874,7 +885,135 @@ function showSelectedDateDetail(course, record) {
   showNDVIOverlay(course.id, record.date, record.satellite, record.ndvi_mean);
 }
 
-// ── Map Overlay: NDVI 히트맵 ──────────────────────────────────────
+// ── Map Overlay: 식생 지수 히트맵 (범용) ──────────────────────────
+
+// 식생 지수 메타정보 (프론트용)
+const VI_META = {
+  ndvi:   { name: "NDVI",   full: "Normalized Difference Vegetation Index", color: "#4ade80", unit: "", range: [0, 1],    good: 0.6, desc: "전체 식생 건강도" },
+  ndre:   { name: "NDRE",   full: "Normalized Difference Red Edge Index",   color: "#fb923c", unit: "", range: [0, 0.8],  good: 0.4, desc: "초기 스트레스 감지 (NDVI보다 2~3주 빠름)" },
+  gndvi:  { name: "GNDVI",  full: "Green NDVI",                            color: "#a78bfa", unit: "", range: [0, 0.8],  good: 0.5, desc: "엽록소 농도 / 질소 결핍" },
+  savi:   { name: "SAVI",   full: "Soil Adjusted Vegetation Index",        color: "#2dd4bf", unit: "", range: [0, 0.7],  good: 0.35, desc: "토양 보정 (벙커/카트도로 주변)" },
+  evi:    { name: "EVI",    full: "Enhanced Vegetation Index",             color: "#60a5fa", unit: "", range: [-0.2, 1], good: 0.3, desc: "고밀도 식생 정밀 측정" },
+  msavi2: { name: "MSAVI2", full: "Modified Soil Adjusted VI",             color: "#f87171", unit: "", range: [0, 1],    good: 0.35, desc: "벙커 인접 그린 가장자리" },
+  ndmi:   { name: "NDMI",   full: "Normalized Difference Moisture Index",  color: "#38bdf8", unit: "", range: [-0.3, 0.5], good: 0.1, desc: "잔디 수분 스트레스 / 관수 판단" },
+  cire:   { name: "CIre",   full: "Chlorophyll Index Red Edge",            color: "#4ade80", unit: "", range: [0, 5],    good: 1.5, desc: "엽록소 함량 / 시비 효과" },
+  gli:    { name: "GLI",    full: "Green Leaf Index",                      color: "#86efac", unit: "", range: [-0.3, 0.5], good: 0.1, desc: "잔디 녹색도 (RGB 기반)" },
+};
+
+window.showIndexOverlay = function (courseId, date, indexId, ndviMean) {
+  const meta = VI_META[indexId] || VI_META.ndvi;
+  // NDVI는 기존 함수 호출
+  if (indexId === "ndvi") {
+    return showNDVIOverlay(courseId, date, "", ndviMean);
+  }
+
+  if (!state.fullMap) return;
+  const course = state.courses.find((c) => c.id === Number(courseId));
+  if (!course) return;
+
+  clearMapOverlays();
+
+  const boundary = course.boundary || [];
+  const fakeRecord = { ndvi_mean: ndviMean, date };
+  const cells = generateNDVIGrid(course, fakeRecord);
+
+  state._mapOverlayLayer = L.layerGroup();
+
+  // 지수별 시뮬레이션 변환
+  cells.forEach((cell) => {
+    let value = cell.ndvi;
+    // 지수별 값 범위 변환 (시뮬레이션)
+    switch (indexId) {
+      case "ndre":   value = value * 0.7; break;
+      case "gndvi":  value = value * 0.85; break;
+      case "savi":   value = value * 0.65; break;
+      case "evi":    value = value * 0.8 - 0.05; break;
+      case "msavi2": value = value * 0.7; break;
+      case "ndmi":   value = value * 0.6 - 0.1; break;
+      case "cire":   value = value * 3.5; break;
+      case "gli":    value = value * 0.5 - 0.1; break;
+    }
+
+    const norm = (value - meta.range[0]) / (meta.range[1] - meta.range[0]);
+    const clamp = Math.max(0, Math.min(1, norm));
+    const color = getIndexColor(clamp, meta.color);
+
+    const rect = L.rectangle(cell.bounds, {
+      color: "transparent", weight: 0, fillColor: color, fillOpacity: 0.6,
+    });
+    rect.bindTooltip(
+      `<b>${meta.name}: ${value.toFixed(3)}</b><br>${getIndexStatus(value, meta)}<br>${date}`,
+      { sticky: true, className: "ndvi-tooltip" }
+    );
+    state._mapOverlayLayer.addLayer(rect);
+  });
+
+  // Boundary
+  const boundaries = parseBoundary(boundary);
+  boundaries.forEach((p) => {
+    if (p.coords && p.coords.length >= 3) {
+      L.polygon(p.coords, {
+        color: "#fff", weight: 2.5, fillColor: "transparent", fillOpacity: 0, dashArray: "8,4",
+      }).addTo(state._mapOverlayLayer);
+    }
+  });
+
+  // Legend
+  const legend = L.control({ position: "bottomleft" });
+  legend.onAdd = function () {
+    const div = L.DomUtil.create("div", "ndvi-map-legend");
+    div.innerHTML = `
+      <div style="background:rgba(30,33,48,0.92);padding:10px 12px;border-radius:8px;border:1px solid var(--border-color);font-size:10px;color:#e8eaf0;min-width:180px">
+        <div style="font-weight:700;font-size:12px;margin-bottom:2px;color:${meta.color}">${meta.name}</div>
+        <div style="font-size:9px;color:#9ba1b7;margin-bottom:6px">${meta.full}</div>
+        <div style="display:flex;gap:3px;align-items:center;margin-bottom:4px">
+          <span>${meta.range[0]}</span>
+          <div style="flex:1;height:10px;border-radius:5px;background:linear-gradient(to right,#8b0000,#d32f2f,#ff9800,#cddc39,#8bc34a,#4caf50,#388e3c,#1b5e20)"></div>
+          <span>${meta.range[1]}</span>
+        </div>
+        <div style="color:#9ba1b7">${meta.desc}</div>
+        <div style="margin-top:4px;color:#9ba1b7">기준: ${meta.good}+ 양호 | ${date}</div>
+      </div>
+    `;
+    return div;
+  };
+  legend.addTo(state.fullMap);
+  state._mapLegendControl = legend;
+
+  state._mapOverlayLayer.addTo(state.fullMap);
+
+  // Zoom
+  const allCoords = getAllBoundaryCoords(boundary);
+  if (allCoords.length >= 3) {
+    state.fullMap.fitBounds(L.polygon(allCoords).getBounds().pad(0.15));
+  } else {
+    state.fullMap.setView([course.lat, course.lng], 16);
+  }
+
+  const statusEl = document.getElementById("overlayStatus");
+  if (statusEl) statusEl.innerHTML = `<span style="color:${meta.color}">${meta.name} 히트맵 표시 중 (${cells.length}개 셀)</span>`;
+};
+
+function getIndexColor(normalizedValue, baseColor) {
+  // 0(빨강) ~ 1(진녹색) 그라데이션
+  const t = normalizedValue;
+  if (t < 0.15) return "#8b0000";
+  if (t < 0.25) return "#d32f2f";
+  if (t < 0.35) return "#ff9800";
+  if (t < 0.45) return "#cddc39";
+  if (t < 0.55) return "#8bc34a";
+  if (t < 0.65) return "#4caf50";
+  if (t < 0.75) return "#388e3c";
+  return "#1b5e20";
+}
+
+function getIndexStatus(value, meta) {
+  if (value >= meta.good * 1.3) return "매우 건강";
+  if (value >= meta.good) return "양호";
+  if (value >= meta.good * 0.7) return "보통";
+  if (value >= meta.good * 0.5) return "주의";
+  return "위험";
+}
 
 window.showNDVIOverlay = function (courseId, date, satellite, ndviMean) {
   if (!state.fullMap) return;
@@ -2543,11 +2682,36 @@ function initEditLocationMap(course) {
     const color = POLY_COLORS[layerCount % POLY_COLORS.length];
     e.layer.setStyle({ color, fillColor: color, fillOpacity: 0.15, weight: 2 });
 
-    // 폴리곤에 코스 이름 라벨 추가
+    // 폴리곤에 코스 이름 라벨 + 클릭 삭제 추가
     const center = e.layer.getBounds().getCenter();
     const courseName = `코스 ${layerCount + 1}`;
     e.layer._courseName = courseName;
+    e.layer._polyIndex = layerCount;
     e.layer.bindTooltip(courseName, { permanent: true, direction: "center", className: "poly-label" });
+
+    // 클릭 → 삭제 팝업
+    e.layer.on("click", function (ev) {
+      L.DomEvent.stopPropagation(ev);
+      const idx = getPolygonIndex(e.layer);
+      const name = e.layer._courseName;
+      const area = calculateArea(extractBoundaryCoords(e.layer));
+      L.popup({ className: "edit-poly-popup", closeButton: true })
+        .setLatLng(ev.latlng)
+        .setContent(`
+          <div style="font-size:12px;min-width:160px">
+            <div style="font-weight:600;margin-bottom:6px;color:${color}">${name}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:8px">면적: ${area} m²</div>
+            <button onclick="removePolygonByLayer(this)" data-layer-id="${L.stamp(e.layer)}"
+              style="width:100%;padding:6px;background:rgba(248,113,113,0.15);color:#f87171;border:1px solid rgba(248,113,113,0.3);border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:4px">
+              <span class="material-icons-outlined" style="font-size:14px">delete</span>
+              이 영역 삭제
+            </button>
+          </div>
+        `)
+        .openOn(editMap);
+    });
+    e.layer.on("mouseover", function () { e.layer.setStyle({ fillOpacity: 0.3, weight: 3 }); });
+    e.layer.on("mouseout", function () { e.layer.setStyle({ fillOpacity: 0.15, weight: 2 }); });
 
     editDrawnItems.addLayer(e.layer);
     updateMultiBoundaryInfo();
@@ -2586,7 +2750,35 @@ function loadBoundariesToMap(boundary) {
     const color = POLY_COLORS[i % POLY_COLORS.length];
     const layer = L.polygon(poly.coords, { color, fillColor: color, fillOpacity: 0.15, weight: 2 });
     layer._courseName = poly.name || `코스 ${i + 1}`;
+    layer._polyIndex = i;
     layer.bindTooltip(layer._courseName, { permanent: true, direction: "center", className: "poly-label" });
+
+    // 폴리곤 클릭 → 삭제/이름변경 팝업
+    layer.on("click", function (e) {
+      L.DomEvent.stopPropagation(e);
+      const idx = layer._polyIndex;
+      const name = layer._courseName;
+      const area = calculateArea(extractBoundaryCoords(layer));
+      L.popup({ className: "edit-poly-popup", closeButton: true })
+        .setLatLng(e.latlng)
+        .setContent(`
+          <div style="font-size:12px;min-width:160px">
+            <div style="font-weight:600;margin-bottom:6px;color:${color}">${name}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:8px">면적: ${area} m²</div>
+            <button onclick="removePolygon(${idx}); this.closest('.leaflet-popup').remove();"
+              style="width:100%;padding:6px;background:rgba(248,113,113,0.15);color:#f87171;border:1px solid rgba(248,113,113,0.3);border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:4px">
+              <span class="material-icons-outlined" style="font-size:14px">delete</span>
+              이 영역 삭제
+            </button>
+          </div>
+        `)
+        .openOn(editMap);
+    });
+
+    // 호버 효과
+    layer.on("mouseover", function () { layer.setStyle({ fillOpacity: 0.3, weight: 3 }); });
+    layer.on("mouseout", function () { layer.setStyle({ fillOpacity: 0.15, weight: 2 }); });
+
     editDrawnItems.addLayer(layer);
     allBounds.push(layer.getBounds());
   });
@@ -2667,9 +2859,31 @@ window.removePolygon = function (index) {
   });
   if (target) {
     editDrawnItems.removeLayer(target);
+    if (editMap) editMap.closePopup();
     updateMultiBoundaryInfo();
   }
 };
+
+window.removePolygonByLayer = function (btnEl) {
+  if (!editDrawnItems) return;
+  const layerId = parseInt(btnEl.dataset.layerId);
+  editDrawnItems.eachLayer((layer) => {
+    if (L.stamp(layer) === layerId) {
+      editDrawnItems.removeLayer(layer);
+    }
+  });
+  if (editMap) editMap.closePopup();
+  updateMultiBoundaryInfo();
+};
+
+function getPolygonIndex(targetLayer) {
+  let idx = 0;
+  editDrawnItems.eachLayer((layer) => {
+    if (layer === targetLayer) return;
+    idx++;
+  });
+  return idx;
+}
 
 window.clearAllBoundaries = function () {
   if (!editDrawnItems) return;
@@ -2745,72 +2959,89 @@ window.toggleEditLocationFullscreen = function () {
   if (editMap) setTimeout(() => editMap.invalidateSize(), 100);
 };
 
-// ── Drag & Resize for edit location window ────────────────
+// ── Drag & Resize for edit location window (8방향) ────────
 (function () {
-  let isDragging = false;
-  let isResizing = false;
+  let mode = null; // "drag" | "resize"
+  let resizeDir = "";
   let startX, startY, startLeft, startTop, startW, startH;
+  const MIN_W = 600, MIN_H = 400;
+
+  function snapToPixels(win) {
+    win.classList.add("is-dragged");
+    win.style.transform = "none";
+    const rect = win.getBoundingClientRect();
+    win.style.left = rect.left + "px";
+    win.style.top = rect.top + "px";
+    win.style.width = rect.width + "px";
+    win.style.height = rect.height + "px";
+    return rect;
+  }
 
   document.addEventListener("mousedown", function (e) {
-    const dragbar = e.target.closest("#editLocationDragbar");
-    const resizeHandle = e.target.closest("#editResizeHandle");
     const win = document.getElementById("editLocationWindow");
-    if (!win || win.classList.contains("is-fullscreen")) return;
+    if (!win || !win.closest(".modal.active") || win.classList.contains("is-fullscreen")) return;
+
+    const dragbar = e.target.closest("#editLocationDragbar");
+    const resizeEdge = e.target.closest(".resize-edge");
 
     if (dragbar && !e.target.closest("button")) {
-      isDragging = true;
-      win.classList.add("is-dragged");
-      win.style.transform = "none";
-      const rect = win.getBoundingClientRect();
-      startX = e.clientX;
-      startY = e.clientY;
-      startLeft = rect.left;
-      startTop = rect.top;
+      mode = "drag";
+      const rect = snapToPixels(win);
+      startX = e.clientX; startY = e.clientY;
+      startLeft = rect.left; startTop = rect.top;
       e.preventDefault();
     }
 
-    if (resizeHandle) {
-      isResizing = true;
-      win.classList.add("is-dragged");
-      win.style.transform = "none";
-      const rect = win.getBoundingClientRect();
-      startX = e.clientX;
-      startY = e.clientY;
-      startW = rect.width;
-      startH = rect.height;
-      startLeft = rect.left;
-      startTop = rect.top;
-      win.style.left = startLeft + "px";
-      win.style.top = startTop + "px";
+    if (resizeEdge) {
+      mode = "resize";
+      resizeDir = resizeEdge.dataset.dir;
+      const rect = snapToPixels(win);
+      startX = e.clientX; startY = e.clientY;
+      startLeft = rect.left; startTop = rect.top;
+      startW = rect.width; startH = rect.height;
       e.preventDefault();
     }
   });
 
   document.addEventListener("mousemove", function (e) {
+    if (!mode) return;
     const win = document.getElementById("editLocationWindow");
     if (!win) return;
 
-    if (isDragging) {
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    if (mode === "drag") {
       win.style.left = (startLeft + dx) + "px";
       win.style.top = (startTop + dy) + "px";
+      return;
     }
 
-    if (isResizing) {
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      const newW = Math.max(600, startW + dx);
-      const newH = Math.max(400, startH + dy);
+    if (mode === "resize") {
+      let newW = startW, newH = startH, newL = startLeft, newT = startTop;
+
+      if (resizeDir.includes("e")) newW = Math.max(MIN_W, startW + dx);
+      if (resizeDir.includes("s")) newH = Math.max(MIN_H, startH + dy);
+      if (resizeDir.includes("w")) {
+        const dw = Math.min(dx, startW - MIN_W);
+        newW = startW - dw; newL = startLeft + dw;
+      }
+      if (resizeDir.includes("n")) {
+        const dh = Math.min(dy, startH - MIN_H);
+        newH = startH - dh; newT = startTop + dh;
+      }
+
       win.style.width = newW + "px";
       win.style.height = newH + "px";
+      win.style.left = newL + "px";
+      win.style.top = newT + "px";
     }
   });
 
   document.addEventListener("mouseup", function () {
-    if (isDragging || isResizing) {
-      isDragging = false;
-      isResizing = false;
+    if (mode) {
+      mode = null;
+      resizeDir = "";
       if (editMap) setTimeout(() => editMap.invalidateSize(), 50);
     }
   });

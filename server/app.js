@@ -144,6 +144,11 @@ app.get("/api/planet/basemap-tile-url", (req, res) => {
   });
 });
 
+// 식생 지수 카탈로그
+app.get("/api/vegetation-indices", (req, res) => {
+  res.json(satelliteService.getVegetationIndices());
+});
+
 // Health check
 app.get("/api/health", (req, res) => {
   const catalog = satelliteService.getCatalog();

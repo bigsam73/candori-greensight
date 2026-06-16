@@ -1186,28 +1186,37 @@ body {
   border-color: var(--accent-green);
 }
 
-/* Resize handle */
-.resize-handle {
+/* Resize edges (8방향) */
+.resize-edge {
   position: absolute;
   z-index: 10;
 }
+.resize-edge-n  { top:-4px;   left:8px;  right:8px; height:8px; cursor:n-resize; }
+.resize-edge-s  { bottom:-4px;left:8px;  right:8px; height:8px; cursor:s-resize; }
+.resize-edge-w  { left:-4px;  top:8px;   bottom:8px;width:8px;  cursor:w-resize; }
+.resize-edge-e  { right:-4px; top:8px;   bottom:8px;width:8px;  cursor:e-resize; }
+.resize-edge-nw { top:-4px;   left:-4px; width:14px; height:14px; cursor:nw-resize; }
+.resize-edge-ne { top:-4px;   right:-4px;width:14px; height:14px; cursor:ne-resize; }
+.resize-edge-sw { bottom:-4px;left:-4px; width:14px; height:14px; cursor:sw-resize; }
+.resize-edge-se { bottom:-4px;right:-4px;width:14px; height:14px; cursor:se-resize; }
 
-.resize-handle-se {
-  right: 0;
-  bottom: 0;
-  width: 20px;
-  height: 20px;
-  cursor: se-resize;
-  background: linear-gradient(135deg, transparent 50%, var(--text-muted) 50%, var(--text-muted) 55%, transparent 55%,
-    transparent 65%, var(--text-muted) 65%, var(--text-muted) 70%, transparent 70%,
-    transparent 80%, var(--text-muted) 80%, var(--text-muted) 85%, transparent 85%);
-  opacity: 0.5;
-  transition: opacity 0.2s;
+/* 우하단 시각적 핸들 */
+.resize-grip {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  opacity: 0.4;
+  background:
+    linear-gradient(135deg,
+      transparent 40%,
+      var(--text-muted) 40%, var(--text-muted) 45%, transparent 45%,
+      transparent 55%, var(--text-muted) 55%, var(--text-muted) 60%, transparent 60%,
+      transparent 70%, var(--text-muted) 70%, var(--text-muted) 75%, transparent 75%);
 }
-
-.resize-handle-se:hover {
-  opacity: 1;
-}
+.edit-location-window:hover .resize-grip { opacity: 0.8; }
 
 /* ============ POLYGON LABELS ============ */
 .poly-label {
@@ -1223,6 +1232,36 @@ body {
   white-space: nowrap !important;
 }
 .poly-label::before { display: none !important; }
+
+/* ============ VEGETATION INDEX BUTTONS ============ */
+.vi-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--vi-color, #4ade80) 30%, transparent);
+  background: color-mix(in srgb, var(--vi-color, #4ade80) 10%, transparent);
+  color: var(--vi-color, #4ade80);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  justify-content: center;
+}
+
+.vi-btn:hover {
+  background: color-mix(in srgb, var(--vi-color, #4ade80) 20%, transparent);
+  border-color: var(--vi-color, #4ade80);
+}
+
+.vi-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
 
 /* ============ OVERLAY TOGGLE BUTTONS ============ */
 .ovl-btn {

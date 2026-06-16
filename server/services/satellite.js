@@ -332,6 +332,279 @@ function evaluatePixel(sample) {
 }
 `;
 
+// ─── 골프장 식생 모니터링 지수 Evalscripts (Sentinel-2 기반) ──────
+// 각 지수는 골프장 잔디/식생의 다른 측면을 분석합니다
+
+// 1. NDRE (Normalized Difference Red Edge Index)
+// 용도: 초기 스트레스 감지 - NDVI보다 2~3주 빨리 변화 감지
+// 밴드: B08(NIR) + B05(Red Edge 705nm)
+const SENTINEL2_NDRE_EVALSCRIPT = `
+//VERSION=3
+function setup() {
+  return { input: [{ bands: ["B05", "B08", "SCL"] }], output: { bands: 4 } };
+}
+function evaluatePixel(s) {
+  if ([3,8,9,10].includes(s.SCL)) return [0.78, 0.78, 0.78, 1];
+  let ndre = (s.B08 - s.B05) / (s.B08 + s.B05 + 0.0001);
+  let r,g,b;
+  if (ndre < 0.0)  {r=0.6;g=0.3;b=0.2;}
+  else if (ndre < 0.1) {r=0.8;g=0.4;b=0.2;}
+  else if (ndre < 0.2) {r=0.9;g=0.7;b=0.2;}
+  else if (ndre < 0.3) {r=0.8;g=0.85;b=0.2;}
+  else if (ndre < 0.4) {r=0.5;g=0.8;b=0.3;}
+  else if (ndre < 0.5) {r=0.2;g=0.7;b=0.3;}
+  else if (ndre < 0.6) {r=0.1;g=0.55;b=0.2;}
+  else {r=0.04;g=0.4;b=0.1;}
+  return [r, g, b, 1];
+}
+`;
+
+// 2. GNDVI (Green Normalized Difference Vegetation Index)
+// 용도: 엽록소 농도 측정, 질소 결핍 판단
+// 밴드: B08(NIR) + B03(Green 560nm)
+const SENTINEL2_GNDVI_EVALSCRIPT = `
+//VERSION=3
+function setup() {
+  return { input: [{ bands: ["B03", "B08", "SCL"] }], output: { bands: 4 } };
+}
+function evaluatePixel(s) {
+  if ([3,8,9,10].includes(s.SCL)) return [0.78, 0.78, 0.78, 1];
+  let gndvi = (s.B08 - s.B03) / (s.B08 + s.B03 + 0.0001);
+  let r,g,b;
+  if (gndvi < 0.0)  {r=0.5;g=0.2;b=0.4;}
+  else if (gndvi < 0.2) {r=0.7;g=0.3;b=0.5;}
+  else if (gndvi < 0.3) {r=0.8;g=0.5;b=0.3;}
+  else if (gndvi < 0.4) {r=0.9;g=0.75;b=0.2;}
+  else if (gndvi < 0.5) {r=0.6;g=0.85;b=0.2;}
+  else if (gndvi < 0.6) {r=0.3;g=0.8;b=0.2;}
+  else if (gndvi < 0.7) {r=0.1;g=0.65;b=0.15;}
+  else {r=0.04;g=0.45;b=0.08;}
+  return [r, g, b, 1];
+}
+`;
+
+// 3. SAVI (Soil Adjusted Vegetation Index)
+// 용도: 토양 노출 영역(벙커, 카트도로 주변)의 정확한 식생 평가
+// L=0.5 (중간 식생 밀도), 맨땅 영향 보정
+const SENTINEL2_SAVI_EVALSCRIPT = `
+//VERSION=3
+function setup() {
+  return { input: [{ bands: ["B04", "B08", "SCL"] }], output: { bands: 4 } };
+}
+function evaluatePixel(s) {
+  if ([3,8,9,10].includes(s.SCL)) return [0.78, 0.78, 0.78, 1];
+  let L = 0.5;
+  let savi = ((s.B08 - s.B04) * (1 + L)) / (s.B08 + s.B04 + L + 0.0001);
+  let r,g,b;
+  if (savi < 0.0)  {r=0.5;g=0.35;b=0.25;}
+  else if (savi < 0.1) {r=0.7;g=0.45;b=0.2;}
+  else if (savi < 0.2) {r=0.85;g=0.65;b=0.15;}
+  else if (savi < 0.3) {r=0.9;g=0.85;b=0.15;}
+  else if (savi < 0.4) {r=0.6;g=0.85;b=0.2;}
+  else if (savi < 0.5) {r=0.3;g=0.75;b=0.2;}
+  else if (savi < 0.6) {r=0.15;g=0.6;b=0.15;}
+  else {r=0.05;g=0.4;b=0.08;}
+  return [r, g, b, 1];
+}
+`;
+
+// 4. EVI (Enhanced Vegetation Index)
+// 용도: 고밀도 식생(여름철 러프)에서 포화 없이 정확한 측정
+// NDVI는 0.8 이상에서 포화되지만 EVI는 구분 가능
+const SENTINEL2_EVI_EVALSCRIPT = `
+//VERSION=3
+function setup() {
+  return { input: [{ bands: ["B02", "B04", "B08", "SCL"] }], output: { bands: 4 } };
+}
+function evaluatePixel(s) {
+  if ([3,8,9,10].includes(s.SCL)) return [0.78, 0.78, 0.78, 1];
+  let evi = 2.5 * (s.B08 - s.B04) / (s.B08 + 6*s.B04 - 7.5*s.B02 + 1 + 0.0001);
+  evi = Math.max(-0.2, Math.min(1.0, evi));
+  let r,g,b;
+  if (evi < 0.0)  {r=0.55;g=0.3;b=0.2;}
+  else if (evi < 0.1) {r=0.75;g=0.45;b=0.15;}
+  else if (evi < 0.2) {r=0.9;g=0.7;b=0.1;}
+  else if (evi < 0.3) {r=0.85;g=0.85;b=0.15;}
+  else if (evi < 0.4) {r=0.55;g=0.85;b=0.2;}
+  else if (evi < 0.5) {r=0.25;g=0.75;b=0.2;}
+  else if (evi < 0.6) {r=0.1;g=0.6;b=0.12;}
+  else {r=0.03;g=0.42;b=0.06;}
+  return [r, g, b, 1];
+}
+`;
+
+// 5. MSAVI2 (Modified Soil Adjusted Vegetation Index 2)
+// 용도: 벙커/카트도로 인접 그린에서 토양 영향 최소화
+// SAVI보다 자동화된 L값 (수동 설정 불필요)
+const SENTINEL2_MSAVI2_EVALSCRIPT = `
+//VERSION=3
+function setup() {
+  return { input: [{ bands: ["B04", "B08", "SCL"] }], output: { bands: 4 } };
+}
+function evaluatePixel(s) {
+  if ([3,8,9,10].includes(s.SCL)) return [0.78, 0.78, 0.78, 1];
+  let msavi = (2*s.B08 + 1 - Math.sqrt((2*s.B08+1)*(2*s.B08+1) - 8*(s.B08-s.B04))) / 2;
+  msavi = Math.max(0, Math.min(1, msavi));
+  let r,g,b;
+  if (msavi < 0.1) {r=0.6;g=0.35;b=0.25;}
+  else if (msavi < 0.2) {r=0.8;g=0.55;b=0.15;}
+  else if (msavi < 0.3) {r=0.9;g=0.8;b=0.15;}
+  else if (msavi < 0.4) {r=0.6;g=0.85;b=0.2;}
+  else if (msavi < 0.5) {r=0.3;g=0.75;b=0.2;}
+  else if (msavi < 0.6) {r=0.12;g=0.6;b=0.12;}
+  else {r=0.04;g=0.4;b=0.06;}
+  return [r, g, b, 1];
+}
+`;
+
+// 6. NDMI (Normalized Difference Moisture Index)
+// 용도: 잔디 수분 스트레스 감지, 관수 필요 구역 판별
+// 밴드: B08(NIR) + B11(SWIR 1610nm)
+const SENTINEL2_NDMI_EVALSCRIPT = `
+//VERSION=3
+function setup() {
+  return { input: [{ bands: ["B08", "B11", "SCL"] }], output: { bands: 4 } };
+}
+function evaluatePixel(s) {
+  if ([3,8,9,10].includes(s.SCL)) return [0.78, 0.78, 0.78, 1];
+  let ndmi = (s.B08 - s.B11) / (s.B08 + s.B11 + 0.0001);
+  let r,g,b;
+  if (ndmi < -0.2) {r=0.7;g=0.2;b=0.1;}
+  else if (ndmi < -0.1) {r=0.85;g=0.4;b=0.1;}
+  else if (ndmi < 0.0) {r=0.95;g=0.7;b=0.2;}
+  else if (ndmi < 0.1) {r=0.85;g=0.85;b=0.3;}
+  else if (ndmi < 0.2) {r=0.5;g=0.8;b=0.4;}
+  else if (ndmi < 0.3) {r=0.2;g=0.6;b=0.7;}
+  else if (ndmi < 0.4) {r=0.1;g=0.4;b=0.8;}
+  else {r=0.05;g=0.2;b=0.7;}
+  return [r, g, b, 1];
+}
+`;
+
+// 7. CIre (Chlorophyll Index Red Edge)
+// 용도: 엽록소 함량 정밀 측정, 시비(비료) 효과 모니터링
+// 밴드: B07(Red Edge 783nm) + B05(Red Edge 705nm)
+const SENTINEL2_CIRE_EVALSCRIPT = `
+//VERSION=3
+function setup() {
+  return { input: [{ bands: ["B05", "B07", "SCL"] }], output: { bands: 4 } };
+}
+function evaluatePixel(s) {
+  if ([3,8,9,10].includes(s.SCL)) return [0.78, 0.78, 0.78, 1];
+  let cire = (s.B07 / (s.B05 + 0.0001)) - 1;
+  cire = Math.max(0, Math.min(5, cire));
+  let t = cire / 5;
+  let r = 0.8 - t * 0.7;
+  let g = 0.3 + t * 0.5;
+  let b = 0.1 + t * 0.1;
+  return [r, g, b, 1];
+}
+`;
+
+// 8. GLI (Green Leaf Index)
+// 용도: 잔디 녹색도/건강도, RGB만으로 간단 평가 (드론 영상 호환)
+const SENTINEL2_GLI_EVALSCRIPT = `
+//VERSION=3
+function setup() {
+  return { input: [{ bands: ["B02", "B03", "B04", "SCL"] }], output: { bands: 4 } };
+}
+function evaluatePixel(s) {
+  if ([3,8,9,10].includes(s.SCL)) return [0.78, 0.78, 0.78, 1];
+  let gli = (2*s.B03 - s.B04 - s.B02) / (2*s.B03 + s.B04 + s.B02 + 0.0001);
+  gli = Math.max(-0.3, Math.min(0.5, gli));
+  let t = (gli + 0.3) / 0.8;
+  let r = 0.8 * (1-t);
+  let g = 0.3 + 0.6*t;
+  let b = 0.15;
+  return [r, g, b, 1];
+}
+`;
+
+// 지수 카탈로그 (프론트에서 선택 가능)
+const VEGETATION_INDICES = [
+  {
+    id: "ndvi", name: "NDVI", fullName: "Normalized Difference Vegetation Index",
+    formula: "(NIR - Red) / (NIR + Red)", bands: "B08 + B04",
+    description: "기본 식생 건강도 지수. 전반적인 잔디 상태 평가",
+    golf_use: "전체 코스 식생 상태 모니터링",
+    range: "0.0 ~ 1.0 (0.6 이상 건강)",
+    evalscript: "SENTINEL2_NDVI",
+    color: "#4ade80",
+  },
+  {
+    id: "ndre", name: "NDRE", fullName: "Normalized Difference Red Edge Index",
+    formula: "(NIR - RedEdge) / (NIR + RedEdge)", bands: "B08 + B05",
+    description: "초기 스트레스를 NDVI보다 2~3주 빨리 감지. Red Edge 밴드 활용",
+    golf_use: "페어웨이/그린 스트레스 조기 경보",
+    range: "0.0 ~ 0.8 (0.4 이상 건강)",
+    evalscript: "SENTINEL2_NDRE",
+    color: "#fb923c",
+  },
+  {
+    id: "gndvi", name: "GNDVI", fullName: "Green NDVI",
+    formula: "(NIR - Green) / (NIR + Green)", bands: "B08 + B03",
+    description: "엽록소 농도와 질소 함량 측정. 시비 효과 판단",
+    golf_use: "질소 결핍 구역 식별, 비료 시비 계획",
+    range: "0.0 ~ 0.8 (0.5 이상 양호)",
+    evalscript: "SENTINEL2_GNDVI",
+    color: "#a78bfa",
+  },
+  {
+    id: "savi", name: "SAVI", fullName: "Soil Adjusted Vegetation Index",
+    formula: "((NIR - Red)(1+L)) / (NIR + Red + L)", bands: "B08 + B04",
+    description: "토양 노출 영역에서 정확한 식생 평가. L=0.5",
+    golf_use: "벙커/카트도로 주변 그린/페어웨이 상태",
+    range: "0.0 ~ 0.7 (0.35 이상 양호)",
+    evalscript: "SENTINEL2_SAVI",
+    color: "#2dd4bf",
+  },
+  {
+    id: "evi", name: "EVI", fullName: "Enhanced Vegetation Index",
+    formula: "2.5(NIR-Red) / (NIR+6Red-7.5Blue+1)", bands: "B08 + B04 + B02",
+    description: "고밀도 식생에서 NDVI 포화 없이 정확 측정",
+    golf_use: "여름철 러프/나무 지역 정밀 분석",
+    range: "-0.2 ~ 1.0 (0.3 이상 양호)",
+    evalscript: "SENTINEL2_EVI",
+    color: "#60a5fa",
+  },
+  {
+    id: "msavi2", name: "MSAVI2", fullName: "Modified Soil Adjusted VI",
+    formula: "(2NIR+1-sqrt((2NIR+1)²-8(NIR-Red)))/2", bands: "B08 + B04",
+    description: "토양 보정 자동화. 벙커 인접 구역에 최적",
+    golf_use: "벙커 주변 그린 가장자리 정밀 분석",
+    range: "0.0 ~ 1.0 (0.35 이상 양호)",
+    evalscript: "SENTINEL2_MSAVI2",
+    color: "#f87171",
+  },
+  {
+    id: "ndmi", name: "NDMI", fullName: "Normalized Difference Moisture Index",
+    formula: "(NIR - SWIR) / (NIR + SWIR)", bands: "B08 + B11",
+    description: "잔디 수분 스트레스 감지. 관수 필요 구역 판별",
+    golf_use: "관수 의사결정, 가뭄 스트레스 구역 파악",
+    range: "-0.3 ~ 0.5 (0.1 이상 수분 양호)",
+    evalscript: "SENTINEL2_NDMI",
+    color: "#38bdf8",
+  },
+  {
+    id: "cire", name: "CIre", fullName: "Chlorophyll Index Red Edge",
+    formula: "(B07 / B05) - 1", bands: "B07 + B05",
+    description: "엽록소 함량 정밀 측정. 시비 전후 효과 비교",
+    golf_use: "시비(비료) 효과 모니터링, 질소 관리",
+    range: "0.0 ~ 5.0 (1.5 이상 양호)",
+    evalscript: "SENTINEL2_CIRE",
+    color: "#4ade80",
+  },
+  {
+    id: "gli", name: "GLI", fullName: "Green Leaf Index",
+    formula: "(2G - R - B) / (2G + R + B)", bands: "B03 + B04 + B02",
+    description: "RGB만으로 녹색도 평가. 드론 영상과 호환",
+    golf_use: "간편한 잔디 녹색도 확인, 드론 비교 분석",
+    range: "-0.3 ~ 0.5 (0.1 이상 녹색)",
+    evalscript: "SENTINEL2_GLI",
+    color: "#86efac",
+  },
+];
+
 // Landsat 8/9 NDVI Evalscript
 const LANDSAT_NDVI_EVALSCRIPT = `
 //VERSION=3
@@ -500,6 +773,11 @@ class SatelliteService {
   /** 전체 위성 카탈로그 반환 */
   getCatalog() {
     return SATELLITE_CATALOG;
+  }
+
+  /** 식생 지수 카탈로그 반환 */
+  getVegetationIndices() {
+    return VEGETATION_INDICES;
   }
 
   /** 활성화된 위성만 반환 */
