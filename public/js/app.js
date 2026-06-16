@@ -1023,7 +1023,6 @@ window.showNDVIOverlay = function (courseId, date, satellite, ndviMean) {
   // Clear previous overlays
   clearMapOverlays();
 
-  const boundary = course.boundary || [];
   const fakeRecord = { ndvi_mean: ndviMean, date, satellite };
   const cells = generateNDVIGrid(course, fakeRecord);
 
@@ -1044,12 +1043,15 @@ window.showNDVIOverlay = function (courseId, date, satellite, ndviMean) {
     state._mapOverlayLayer.addLayer(rect);
   });
 
-  // Boundary outline
-  if (boundary.length >= 3) {
-    L.polygon(boundary, {
-      color: "#fff", weight: 2.5, fillColor: "transparent", fillOpacity: 0, dashArray: "8,4",
-    }).addTo(state._mapOverlayLayer);
-  }
+  // Boundary outline (다중 폴리곤 지원)
+  const boundaries = parseBoundary(course.boundary);
+  boundaries.forEach((p) => {
+    if (p.coords && p.coords.length >= 3) {
+      L.polygon(p.coords, {
+        color: "#fff", weight: 2.5, fillColor: "transparent", fillOpacity: 0, dashArray: "8,4",
+      }).addTo(state._mapOverlayLayer);
+    }
+  });
 
   // NDVI legend control on map
   const legend = L.control({ position: "bottomleft" });
@@ -1074,8 +1076,9 @@ window.showNDVIOverlay = function (courseId, date, satellite, ndviMean) {
   state._mapOverlayLayer.addTo(state.fullMap);
 
   // Zoom to course
-  if (boundary.length >= 3) {
-    state.fullMap.fitBounds(L.polygon(boundary).getBounds().pad(0.15));
+  const allCoordsNdvi = getAllBoundaryCoords(course.boundary);
+  if (allCoordsNdvi.length >= 3) {
+    state.fullMap.fitBounds(L.polygon(allCoordsNdvi).getBounds().pad(0.15));
   } else {
     state.fullMap.setView([course.lat, course.lng], 16);
   }
@@ -1093,7 +1096,6 @@ window.showSatelliteImageOverlay = async function (courseId, date, satellite) {
 
   clearMapOverlays();
 
-  const boundary = course.boundary || [];
   state._mapOverlayLayer = L.layerGroup();
 
   const statusEl = document.getElementById("overlayStatus");
@@ -1128,12 +1130,15 @@ window.showSatelliteImageOverlay = async function (courseId, date, satellite) {
   let activeSrc = "s2";
   let activeType = "rgb";
 
-  // Boundary
-  if (boundary.length >= 3) {
-    L.polygon(boundary, {
-      color: "#4ade80", weight: 2.5, fillColor: "transparent", fillOpacity: 0, dashArray: "8,4",
-    }).addTo(state._mapOverlayLayer);
-  }
+  // Boundary (다중 폴리곤 지원)
+  const satBoundaries = parseBoundary(course.boundary);
+  satBoundaries.forEach((p) => {
+    if (p.coords && p.coords.length >= 3) {
+      L.polygon(p.coords, {
+        color: "#4ade80", weight: 2.5, fillColor: "transparent", fillOpacity: 0, dashArray: "8,4",
+      }).addTo(state._mapOverlayLayer);
+    }
+  });
 
   // ── Toggle control ────────────────────────────────────────────
   const allLayers = { s2TrueColor, s2NDVI, psTrueColor, psNDVI };
@@ -1223,8 +1228,9 @@ window.showSatelliteImageOverlay = async function (courseId, date, satellite) {
   state._mapOverlayLayer.addTo(state.fullMap);
 
   // Zoom to course
-  if (boundary.length >= 3) {
-    state.fullMap.fitBounds(L.polygon(boundary).getBounds().pad(0.3));
+  const satAllCoords = getAllBoundaryCoords(course.boundary);
+  if (satAllCoords.length >= 3) {
+    state.fullMap.fitBounds(L.polygon(satAllCoords).getBounds().pad(0.3));
   } else {
     state.fullMap.setView([course.lat, course.lng], 15);
   }
@@ -1248,11 +1254,11 @@ window.requestPlanetImage = async function (courseId, date, type) {
   const typeLabel = type === "ndvi" ? "NDVI" : "실화상(RGB)";
   if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-orange)"><div class="spinner" style="width:12px;height:12px;display:inline-block;margin-right:4px;vertical-align:middle"></div>PlanetScope ${typeLabel} 요청 중... (3m)</span>`;
 
-  const boundary = course.boundary || [];
+  const allCoordsPlanet = getAllBoundaryCoords(course.boundary);
   let bbox;
-  if (boundary.length >= 3) {
-    const lats = boundary.map((p) => p[0]);
-    const lngs = boundary.map((p) => p[1]);
+  if (allCoordsPlanet.length >= 3) {
+    const lats = allCoordsPlanet.map((p) => p[0]);
+    const lngs = allCoordsPlanet.map((p) => p[1]);
     bbox = [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
   } else {
     const d = 0.005;
@@ -1280,13 +1286,15 @@ window.requestPlanetImage = async function (courseId, date, type) {
         interactive: true,
       }).addTo(state._mapOverlayLayer);
 
-      // Boundary
-      if (boundary.length >= 3) {
-        L.polygon(boundary, {
-          color: type === "ndvi" ? "#4ade80" : "#60a5fa",
-          weight: 2.5, fillColor: "transparent", fillOpacity: 0, dashArray: "8,4",
-        }).addTo(state._mapOverlayLayer);
-      }
+      // Boundary (다중 폴리곤 지원)
+      parseBoundary(course.boundary).forEach((p) => {
+        if (p.coords && p.coords.length >= 3) {
+          L.polygon(p.coords, {
+            color: type === "ndvi" ? "#4ade80" : "#60a5fa",
+            weight: 2.5, fillColor: "transparent", fillOpacity: 0, dashArray: "8,4",
+          }).addTo(state._mapOverlayLayer);
+        }
+      });
 
       // Legend
       const legend = L.control({ position: "bottomleft" });
@@ -1694,13 +1702,21 @@ async function loadAnalysis(courseId) {
     `;
 
     // Render analysis charts
-    renderAnalysisCharts(sorted.reverse(), s);
+    try {
+      renderAnalysisCharts(sorted.reverse(), s);
+    } catch (chartErr) {
+      console.error("Chart render error:", chartErr);
+    }
 
     // Render NDVI map with satellite tabs
-    renderNDVIMap(course, ndviData);
+    try {
+      renderNDVIMap(course, ndviData);
+    } catch (mapErr) {
+      console.error("NDVI map render error:", mapErr);
+    }
   } catch (err) {
-    content.innerHTML = '<div class="loading" style="color:var(--accent-red)">데이터 로드 실패</div>';
-    console.error(err);
+    content.innerHTML = `<div class="loading" style="color:var(--accent-red)">데이터 로드 실패: ${err.message || err}</div>`;
+    console.error("loadAnalysis error:", err);
   }
 }
 
@@ -1854,13 +1870,18 @@ function renderNDVIMap(course, ndviData) {
     maxZoom: 21, attribution: "Google",
   }).addTo(ndviAnalysisMap);
 
-  // Course boundary
-  const boundary = course.boundary || [];
-  if (boundary.length >= 3) {
-    L.polygon(boundary, {
-      color: "#fff", weight: 2, fillColor: "transparent", fillOpacity: 0, dashArray: "6,4",
-    }).addTo(ndviAnalysisMap);
-    ndviAnalysisMap.fitBounds(L.polygon(boundary).getBounds().pad(0.1));
+  // Course boundary (다중 폴리곤 지원)
+  const boundaries = parseBoundary(course.boundary);
+  const allCoords = getAllBoundaryCoords(course.boundary);
+  boundaries.forEach((p) => {
+    if (p.coords && p.coords.length >= 3) {
+      L.polygon(p.coords, {
+        color: "#fff", weight: 2, fillColor: "transparent", fillOpacity: 0, dashArray: "6,4",
+      }).addTo(ndviAnalysisMap);
+    }
+  });
+  if (allCoords.length >= 3) {
+    ndviAnalysisMap.fitBounds(L.polygon(allCoords).getBounds().pad(0.1));
   }
 
   // Build satellite tabs
@@ -1987,7 +2008,8 @@ function showSatelliteNDVI(satName, course, legendPanel) {
 }
 
 function generateNDVIGrid(course, record) {
-  const boundary = course.boundary || [];
+  const allCoords = getAllBoundaryCoords(course.boundary);
+  let boundary = allCoords.length >= 3 ? allCoords : [];
   const cells = [];
 
   if (boundary.length < 3) {
@@ -2398,13 +2420,18 @@ function renderReportNDVIMaps(course, ndviData) {
         maxZoom: 21,
       }).addTo(miniMap);
 
-      // Boundary
-      const boundary = course.boundary || [];
-      if (boundary.length >= 3) {
-        L.polygon(boundary, {
-          color: "#fff", weight: 2, fillColor: "transparent", fillOpacity: 0, dashArray: "6,4",
-        }).addTo(miniMap);
-        miniMap.fitBounds(L.polygon(boundary).getBounds().pad(0.05));
+      // Boundary (다중 폴리곤 지원)
+      const miniPolys = parseBoundary(course.boundary);
+      const miniAllCoords = getAllBoundaryCoords(course.boundary);
+      miniPolys.forEach((p) => {
+        if (p.coords && p.coords.length >= 3) {
+          L.polygon(p.coords, {
+            color: "#fff", weight: 2, fillColor: "transparent", fillOpacity: 0, dashArray: "6,4",
+          }).addTo(miniMap);
+        }
+      });
+      if (miniAllCoords.length >= 3) {
+        miniMap.fitBounds(L.polygon(miniAllCoords).getBounds().pad(0.05));
       }
 
       // NDVI grid
