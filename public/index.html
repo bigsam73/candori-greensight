@@ -363,36 +363,39 @@
     </div>
 
       <!-- Edit Location Modal -->
-      <div class="modal" id="editLocationModal">
-        <div class="modal-content" style="width:950px;max-width:95vw">
-          <div class="modal-header">
-            <h3 id="editLocationTitle">골프장 위치/영역 수정</h3>
+      <div class="modal" id="editLocationModal" style="background:transparent;pointer-events:none">
+        <div class="modal-content edit-location-window" id="editLocationWindow">
+          <div class="modal-header edit-location-dragbar" id="editLocationDragbar">
+            <h3 id="editLocationTitle" style="flex:1;cursor:grab;user-select:none">골프장 위치/영역 수정</h3>
+            <button class="btn-icon" onclick="toggleEditLocationFullscreen()" title="전체화면 전환" style="margin-right:4px">
+              <span class="material-icons-outlined" id="editFullscreenIcon">fullscreen</span>
+            </button>
             <button class="btn-icon modal-close" onclick="closeEditLocationModal()">&times;</button>
           </div>
-          <div style="display:flex;gap:0;height:520px">
-            <div style="flex:1;position:relative">
+          <div class="edit-location-body">
+            <div style="flex:1;position:relative;min-width:0;min-height:0">
               <div id="editLocationMap" style="width:100%;height:100%"></div>
               <div style="position:absolute;bottom:8px;left:8px;z-index:1000;background:rgba(30,33,48,0.9);padding:6px 10px;border-radius:6px;font-size:11px;color:var(--text-secondary)">
                 <span class="material-icons-outlined" style="font-size:14px;vertical-align:middle">info</span>
-                마커를 드래그하여 중심 이동 | 다각형 꼭짓점을 드래그하여 영역 수정 | 도구로 새 영역 그리기
+                마커 드래그=중심 이동 | 꼭짓점 드래그=영역 수정 | 도구=새 영역
               </div>
             </div>
-            <div style="width:260px;border-left:1px solid var(--border-color);overflow-y:auto;padding:16px">
+            <div class="edit-location-sidebar">
               <div class="form-group" style="margin-bottom:10px">
                 <label>골프장 이름</label>
-                <input type="text" id="editName" style="width:100%;padding:6px 10px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);font-size:12px">
+                <input type="text" id="editName" class="edit-input">
               </div>
               <div class="form-group" style="margin-bottom:10px">
                 <label>위도</label>
-                <input type="number" id="editLat" step="0.0001" style="width:100%;padding:6px 10px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);font-size:12px">
+                <input type="number" id="editLat" step="0.0001" class="edit-input">
               </div>
               <div class="form-group" style="margin-bottom:10px">
                 <label>경도</label>
-                <input type="number" id="editLng" step="0.0001" style="width:100%;padding:6px 10px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);font-size:12px">
+                <input type="number" id="editLng" step="0.0001" class="edit-input">
               </div>
               <div class="form-group" style="margin-bottom:10px">
                 <label>주소</label>
-                <input type="text" id="editAddress" style="width:100%;padding:6px 10px;background:var(--bg-input);border:1px solid var(--border-color);border-radius:4px;color:var(--text-primary);font-size:12px">
+                <input type="text" id="editAddress" class="edit-input">
               </div>
               <div style="padding:8px;background:var(--bg-primary);border-radius:6px;margin-bottom:10px;font-size:11px">
                 <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px">영역 정보</div>
@@ -409,6 +412,8 @@
               </div>
             </div>
           </div>
+          <!-- 리사이즈 핸들 -->
+          <div class="resize-handle resize-handle-se" id="editResizeHandle"></div>
         </div>
       </div>
     </div>

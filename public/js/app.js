@@ -2719,8 +2719,102 @@ window.saveEditedLocation = async function () {
 
 window.closeEditLocationModal = function () {
   document.getElementById("editLocationModal").classList.remove("active");
+  const win = document.getElementById("editLocationWindow");
+  if (win) {
+    win.classList.remove("is-dragged", "is-fullscreen");
+    win.style.top = "50%";
+    win.style.left = "50%";
+    win.style.width = "950px";
+    win.style.height = "580px";
+    win.style.transform = "translate(-50%, -50%)";
+    document.getElementById("editFullscreenIcon").textContent = "fullscreen";
+  }
   if (editMap) { editMap.remove(); editMap = null; editMarker = null; editDrawnItems = null; }
 };
+
+window.toggleEditLocationFullscreen = function () {
+  const win = document.getElementById("editLocationWindow");
+  const icon = document.getElementById("editFullscreenIcon");
+  if (win.classList.contains("is-fullscreen")) {
+    win.classList.remove("is-fullscreen");
+    icon.textContent = "fullscreen";
+  } else {
+    win.classList.add("is-fullscreen", "is-dragged");
+    icon.textContent = "fullscreen_exit";
+  }
+  if (editMap) setTimeout(() => editMap.invalidateSize(), 100);
+};
+
+// ── Drag & Resize for edit location window ────────────────
+(function () {
+  let isDragging = false;
+  let isResizing = false;
+  let startX, startY, startLeft, startTop, startW, startH;
+
+  document.addEventListener("mousedown", function (e) {
+    const dragbar = e.target.closest("#editLocationDragbar");
+    const resizeHandle = e.target.closest("#editResizeHandle");
+    const win = document.getElementById("editLocationWindow");
+    if (!win || win.classList.contains("is-fullscreen")) return;
+
+    if (dragbar && !e.target.closest("button")) {
+      isDragging = true;
+      win.classList.add("is-dragged");
+      win.style.transform = "none";
+      const rect = win.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = rect.left;
+      startTop = rect.top;
+      e.preventDefault();
+    }
+
+    if (resizeHandle) {
+      isResizing = true;
+      win.classList.add("is-dragged");
+      win.style.transform = "none";
+      const rect = win.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      startW = rect.width;
+      startH = rect.height;
+      startLeft = rect.left;
+      startTop = rect.top;
+      win.style.left = startLeft + "px";
+      win.style.top = startTop + "px";
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener("mousemove", function (e) {
+    const win = document.getElementById("editLocationWindow");
+    if (!win) return;
+
+    if (isDragging) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      win.style.left = (startLeft + dx) + "px";
+      win.style.top = (startTop + dy) + "px";
+    }
+
+    if (isResizing) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const newW = Math.max(600, startW + dx);
+      const newH = Math.max(400, startH + dy);
+      win.style.width = newW + "px";
+      win.style.height = newH + "px";
+    }
+  });
+
+  document.addEventListener("mouseup", function () {
+    if (isDragging || isResizing) {
+      isDragging = false;
+      isResizing = false;
+      if (editMap) setTimeout(() => editMap.invalidateSize(), 50);
+    }
+  });
+})();
 
 window.deleteCourse = async function (courseId, courseName) {
   if (!confirm(`"${courseName}"을(를) 삭제하시겠습니까?\n관련 NDVI 데이터도 모두 삭제됩니다.`)) return;
