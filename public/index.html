@@ -160,9 +160,9 @@
             <div class="card-controls">
               <select id="mapLayerSelect" class="select-sm">
                 <option value="dark">다크 모드</option>
+                <option value="esri-clarity">ESRI Clarity (0.3m)</option>
                 <option value="google-hybrid">Google 하이브리드</option>
                 <option value="google-sat">Google 위성</option>
-                <option value="google-road">Google 일반</option>
                 <option value="satellite">ESRI 위성</option>
                 <option value="osm">OpenStreetMap</option>
               </select>
@@ -236,11 +236,13 @@
           <div class="toolbar-group">
             <label>배경:</label>
             <select id="fullMapLayer" class="select-sm">
+              <option value="esri-clarity">ESRI Clarity (0.3m 최고해상도)</option>
               <option value="google-hybrid">Google 하이브리드</option>
               <option value="google-sat">Google 위성</option>
+              <option value="satellite">ESRI 위성</option>
+              <option value="esri-clarity-nolabel">ESRI Clarity (라벨 없음)</option>
               <option value="google-road">Google 일반</option>
               <option value="google-terrain">Google 지형</option>
-              <option value="satellite">ESRI 위성</option>
               <option value="osm">OpenStreetMap</option>
               <option value="dark">다크 모드</option>
             </select>

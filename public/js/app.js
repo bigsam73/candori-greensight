@@ -550,10 +550,22 @@ function addTileLayers(map, type = "dark") {
     { maxZoom: 19, attribution: "CartoDB" }
   );
 
-  // ESRI Satellite
+  // ESRI Satellite (World Imagery)
   const satellite = L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    { maxZoom: 19, attribution: "ESRI" }
+    { maxZoom: 19, attribution: "ESRI World Imagery" }
+  );
+
+  // ESRI Clarity (Maxar 0.3~0.5m 초고해상도 - 무료 최고)
+  const esriClarity = L.tileLayer(
+    "https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 20, attribution: "ESRI Clarity (Maxar)" }
+  );
+
+  // ESRI 라벨 오버레이 (위성 위에 지명 표시용)
+  const esriLabels = L.tileLayer(
+    "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 20, attribution: "", pane: "overlayPane" }
   );
 
   // OpenStreetMap
@@ -587,7 +599,7 @@ function addTileLayers(map, type = "dark") {
   );
 
   dark.addTo(map);
-  map._layers_custom = { dark, satellite, osm, googleRoad, googleSat, googleHybrid, googleTerrain };
+  map._layers_custom = { dark, satellite, esriClarity, esriLabels, osm, googleRoad, googleSat, googleHybrid, googleTerrain };
 
   // Planet Basemaps를 비동기로 로드 (API Key가 있을 때만)
   loadPlanetBasemapLayer(map);
@@ -666,7 +678,17 @@ function switchMapLayer(map, layerType) {
     layers._activePlanet = null;
   }
 
+  // Remove labels overlay if present
+  if (layers.esriLabels) map.removeLayer(layers.esriLabels);
+
   switch (layerType) {
+    case "esri-clarity":
+      layers.esriClarity.addTo(map);
+      layers.esriLabels.addTo(map);
+      break;
+    case "esri-clarity-nolabel":
+      layers.esriClarity.addTo(map);
+      break;
     case "satellite":
       layers.satellite.addTo(map);
       break;
