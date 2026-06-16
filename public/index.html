@@ -225,6 +225,14 @@
 
         <!-- Step-based toolbar -->
         <div class="map-toolbar">
+          <div class="toolbar-group" style="flex:0 0 auto">
+            <div class="map-search-box">
+              <span class="material-icons-outlined" style="font-size:16px;color:var(--text-muted)">search</span>
+              <input type="text" id="mapSearchInput" class="map-search-input" placeholder="주소/장소 검색..." autocomplete="off">
+              <div class="map-search-results" id="mapSearchResults"></div>
+            </div>
+          </div>
+          <div class="toolbar-divider"></div>
           <div class="toolbar-group">
             <label>배경:</label>
             <select id="fullMapLayer" class="select-sm">

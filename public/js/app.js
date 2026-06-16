@@ -134,6 +134,146 @@ function getAllBoundaryCoords(boundary) {
   return all;
 }
 
+// ============ MAP ADDRESS SEARCH (주소/장소 검색) ============
+
+function initMapSearch() {
+  const input = document.getElementById("mapSearchInput");
+  const results = document.getElementById("mapSearchResults");
+  if (!input || !results) return;
+
+  let debounceTimer = null;
+
+  input.addEventListener("input", () => {
+    clearTimeout(debounceTimer);
+    const query = input.value.trim();
+    if (query.length < 2) {
+      results.classList.remove("active");
+      return;
+    }
+    debounceTimer = setTimeout(() => searchAddress(query), 400);
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      clearTimeout(debounceTimer);
+      const query = input.value.trim();
+      if (query.length >= 2) searchAddress(query);
+    }
+    if (e.key === "Escape") {
+      results.classList.remove("active");
+    }
+  });
+
+  // 외부 클릭 시 결과 닫기
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".map-search-box")) {
+      results.classList.remove("active");
+    }
+  });
+}
+
+async function searchAddress(query) {
+  const results = document.getElementById("mapSearchResults");
+  results.innerHTML = '<div class="map-search-loading"><div class="spinner" style="width:14px;height:14px;display:inline-block;margin-right:6px;vertical-align:middle"></div>검색 중...</div>';
+  results.classList.add("active");
+
+  try {
+    // Nominatim API (OpenStreetMap, 무료, API 키 불필요)
+    const encoded = encodeURIComponent(query);
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&countrycodes=kr&limit=8&addressdetails=1&accept-language=ko`,
+      { headers: { "User-Agent": "CandoriGreenSight/1.0" } }
+    );
+    const data = await response.json();
+
+    if (data.length === 0) {
+      results.innerHTML = `
+        <div class="map-search-loading">
+          <span class="material-icons-outlined" style="font-size:20px;display:block;margin-bottom:4px">search_off</span>
+          "${query}" 검색 결과 없음
+        </div>
+      `;
+      return;
+    }
+
+    results.innerHTML = data.map((item) => {
+      const name = item.display_name.split(",")[0];
+      const addr = item.display_name.split(",").slice(1, 4).join(",").trim();
+      const icon = getPlaceIcon(item.type, item.class);
+      return `
+        <div class="map-search-result-item" data-lat="${item.lat}" data-lng="${item.lon}" data-name="${name}" data-bbox="${item.boundingbox?.join(",")}">
+          <span class="material-icons-outlined">${icon}</span>
+          <div>
+            <div class="map-search-result-name">${name}</div>
+            <div class="map-search-result-addr">${addr}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    // 결과 클릭 이벤트
+    results.querySelectorAll(".map-search-result-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        const lat = parseFloat(item.dataset.lat);
+        const lng = parseFloat(item.dataset.lng);
+        const name = item.dataset.name;
+        const bboxStr = item.dataset.bbox;
+
+        // 지도 이동
+        const targetMap = state.fullMap || state.dashboardMap;
+        if (targetMap) {
+          if (bboxStr) {
+            const [s, n, w, e] = bboxStr.split(",").map(Number);
+            targetMap.fitBounds([[s, w], [n, e]], { maxZoom: 17, padding: [20, 20] });
+          } else {
+            targetMap.setView([lat, lng], 16);
+          }
+
+          // 검색 마커 추가
+          if (targetMap._searchMarker) targetMap.removeLayer(targetMap._searchMarker);
+          targetMap._searchMarker = L.marker([lat, lng], {
+            icon: L.divIcon({
+              className: "",
+              html: `<div style="position:relative">
+                <div style="width:20px;height:20px;border-radius:50%;background:#f87171;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div>
+                <div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);white-space:nowrap;background:rgba(30,33,48,0.9);padding:3px 8px;border-radius:4px;font-size:11px;color:#fff;border:1px solid var(--border-color)">${name}</div>
+              </div>`,
+              iconSize: [20, 20],
+              iconAnchor: [10, 10],
+            }),
+          }).addTo(targetMap);
+
+          // 5초 후 마커 제거
+          setTimeout(() => {
+            if (targetMap._searchMarker) {
+              targetMap.removeLayer(targetMap._searchMarker);
+              targetMap._searchMarker = null;
+            }
+          }, 8000);
+        }
+
+        // 검색창 업데이트
+        document.getElementById("mapSearchInput").value = name;
+        results.classList.remove("active");
+      });
+    });
+  } catch (err) {
+    results.innerHTML = `<div class="map-search-loading" style="color:var(--accent-red)">검색 실패: ${err.message}</div>`;
+  }
+}
+
+function getPlaceIcon(type, cls) {
+  if (cls === "leisure" || type === "golf_course") return "sports_golf";
+  if (cls === "building" || type === "house") return "home";
+  if (cls === "highway" || type === "road") return "route";
+  if (type === "city" || type === "town" || type === "village") return "location_city";
+  if (type === "administrative") return "flag";
+  if (cls === "amenity") return "store";
+  if (cls === "natural") return "park";
+  return "place";
+}
+
 // ============ INITIALIZATION ============
 document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
@@ -635,6 +775,9 @@ function initFullMap() {
   document.getElementById("fullMapLayer").addEventListener("change", (e) => {
     switchMapLayer(state.fullMap, e.target.value);
   });
+
+  // Address search
+  initMapSearch();
 
   // Course selector in toolbar → load available dates
   mapCourseSelect.addEventListener("change", (e) => {
