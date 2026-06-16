@@ -485,9 +485,9 @@ function populatePlanetMosaicSelectors(mosaics) {
     if (sel.querySelector('option[value^="planet-"]')) return;
 
     const group = document.createElement("optgroup");
-    group.label = `Planet Basemaps (${mosaics.length})`;
-    // 최근 6개월만
-    mosaics.slice(0, 6).forEach((m) => {
+    group.label = `Planet Basemaps 4.77m (${Math.min(12, mosaics.length)}개월)`;
+    // 최근 12개월
+    mosaics.slice(0, 12).forEach((m) => {
       const opt = document.createElement("option");
       opt.value = "planet-" + m.name;
       const label = m.name.replace("global_monthly_", "").replace("_mosaic", "").replace("_", "-");
