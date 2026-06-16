@@ -241,12 +241,22 @@ function seedGolfCourses(database) {
     // Seed sample NDVI data
     seedNDVIData(database);
   } else {
-    if (database._data.golf_courses.length > 0) return;
-    const courses = getSampleCourses();
-    database._data.golf_courses = courses.map((c, i) => ({
-      id: i + 1,
-      ...c,
-    }));
+    // 골프장이 없으면 seed 데이터 생성
+    if (database._data.golf_courses.length === 0) {
+      const courses = getSampleCourses();
+      database._data.golf_courses = courses.map((c, i) => ({
+        id: i + 1,
+        ...c,
+      }));
+    }
+
+    // NDVI 레코드가 없으면 생성 (user_data 병합 후에도 NDVI가 없을 수 있음)
+    if (database._data.ndvi_records.length === 0) {
+      console.log("[DB] NDVI 레코드 없음 - 전체 골프장 NDVI 데이터 생성 중...");
+    } else {
+      // 이미 NDVI 데이터가 있으면 skip
+      return;
+    }
     seedNDVIData(database);
     database._save();
   }
@@ -497,71 +507,19 @@ function getSampleCourses() {
 }
 
 function seedNDVIData(database) {
-  const today = new Date();
   const courses =
     database._type === "sqlite"
-      ? database.prepare("SELECT id FROM golf_courses").all()
-      : database._data.golf_courses.map((c) => ({ id: c.id }));
+      ? database.prepare("SELECT id, name FROM golf_courses").all()
+      : database._data.golf_courses.map((c) => ({ id: c.id, name: c.name }));
 
-  // Generate 90 days of sample NDVI data
+  // 각 골프장에 대해 1년치 NDVI 데이터 생성
+  let totalRecords = 0;
   for (const course of courses) {
-    for (let d = 0; d < 90; d++) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - d);
-      const dateStr = date.toISOString().split("T")[0];
-
-      // Simulate seasonal NDVI variation
-      const month = date.getMonth();
-      let baseLine = 0.55;
-      if (month >= 3 && month <= 5) baseLine = 0.7; // Spring
-      if (month >= 6 && month <= 8) baseLine = 0.8; // Summer
-      if (month >= 9 && month <= 10) baseLine = 0.6; // Fall
-      if (month >= 11 || month <= 1) baseLine = 0.35; // Winter
-
-      const noise = (Math.random() - 0.5) * 0.15;
-      const ndviMean = Math.max(0.1, Math.min(0.95, baseLine + noise));
-      const ndviMin = Math.max(0.05, ndviMean - 0.15 - Math.random() * 0.1);
-      const ndviMax = Math.min(0.98, ndviMean + 0.1 + Math.random() * 0.1);
-      const ndviStd = 0.05 + Math.random() * 0.08;
-      const cloudCover = Math.random() * 40;
-
-      // Skip some days to simulate cloud cover
-      if (d % 5 === 3 && Math.random() > 0.5) continue;
-
-      // Alternate between satellites
-      const satellite = d % 5 < 3 ? "Sentinel-2" : "Landsat-8";
-
-      if (database._type === "sqlite") {
-        database
-          .prepare(
-            `INSERT INTO ndvi_records (course_id, date, satellite, ndvi_mean, ndvi_min, ndvi_max, ndvi_std, cloud_cover)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-          )
-          .run(
-            course.id,
-            dateStr,
-            satellite,
-            Math.round(ndviMean * 1000) / 1000,
-            Math.round(ndviMin * 1000) / 1000,
-            Math.round(ndviMax * 1000) / 1000,
-            Math.round(ndviStd * 1000) / 1000,
-            Math.round(cloudCover * 10) / 10
-          );
-      } else {
-        database._data.ndvi_records.push({
-          id: database._data.ndvi_records.length + 1,
-          course_id: course.id,
-          date: dateStr,
-          satellite,
-          ndvi_mean: Math.round(ndviMean * 1000) / 1000,
-          ndvi_min: Math.round(ndviMin * 1000) / 1000,
-          ndvi_max: Math.round(ndviMax * 1000) / 1000,
-          ndvi_std: Math.round(ndviStd * 1000) / 1000,
-          cloud_cover: Math.round(cloudCover * 10) / 10,
-        });
-      }
-    }
+    const count = generateYearlyNDVI(course.id);
+    totalRecords += count;
+    console.log(`[DB] ${course.name || course.id}: ${count}건 NDVI 생성`);
   }
+  console.log(`[DB] 전체 NDVI 시드 완료: ${courses.length}개 골프장, ${totalRecords}건 레코드`);
 
   // Generate some sample alerts
   const alertTypes = [
