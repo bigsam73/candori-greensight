@@ -330,6 +330,7 @@ function switchView(viewId) {
     alerts: "알림 센터",
     satellites: "위성 데이터 소스",
     report: "리포트",
+    versions: "버전 관리",
   };
   document.getElementById("pageTitle").textContent = titles[viewId] || viewId;
 
@@ -339,6 +340,7 @@ function switchView(viewId) {
   if (viewId === "analysis") initAnalysisView();
   if (viewId === "compare") initCompareView();
   if (viewId === "satellites") loadSatelliteCatalog();
+  if (viewId === "versions") loadVersions();
 
   // Close mobile sidebar
   document.getElementById("sidebar").classList.remove("open");
@@ -3803,6 +3805,111 @@ function calculateArea(coords) {
   const areaSqm = Math.round(area * latScale * lngScale);
   return areaSqm.toLocaleString();
 }
+
+// ============ VERSION MANAGEMENT (버전 관리) ============
+
+async function loadVersions() {
+  const list = document.getElementById("versionsList");
+  const countEl = document.getElementById("versionCount");
+  const infoEl = document.getElementById("versionCurrentInfo");
+
+  try {
+    const result = await API.get("/api/versions");
+    if (!result.ok) throw new Error("API error");
+
+    // 현재 상태 표시
+    if (result.current) {
+      infoEl.textContent = `골프장 ${result.current.course_count}개 | 마지막 저장: ${result.current.saved_at?.substring(0, 19).replace("T", " ") || "없음"}`;
+    } else {
+      infoEl.textContent = "저장된 사용자 데이터 없음";
+    }
+
+    countEl.textContent = `${result.count}개`;
+
+    if (result.versions.length === 0) {
+      list.innerHTML = `
+        <div style="text-align:center;padding:32px;color:var(--text-muted)">
+          <span class="material-icons-outlined" style="font-size:40px;display:block;margin-bottom:8px">history</span>
+          <div style="font-size:13px">저장된 버전이 없습니다</div>
+          <div style="font-size:11px;margin-top:4px">"현재 상태 저장" 버튼으로 첫 버전을 만드세요</div>
+        </div>
+      `;
+      return;
+    }
+
+    list.innerHTML = result.versions.map((v) => {
+      const date = v.saved_at ? v.saved_at.substring(0, 19).replace("T", " ") : "?";
+      const sizeKB = Math.round((v.size || 0) / 1024);
+      const isAuto = v.filename.includes("auto_before_restore");
+
+      return `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px;border-bottom:1px solid var(--border-color);transition:background 0.15s" onmouseover="this.style.background='var(--bg-card-hover)'" onmouseout="this.style.background=''">
+          <div style="flex-shrink:0">
+            <span class="material-icons-outlined" style="font-size:24px;color:${isAuto ? "var(--accent-orange)" : "var(--accent-green)"}">${isAuto ? "auto_mode" : "bookmark"}</span>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.label}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${date} | ${v.course_count}개 골프장 | ${sizeKB}KB</div>
+            ${v.description ? `<div style="font-size:10px;color:var(--text-secondary);margin-top:1px">${v.description}</div>` : ""}
+          </div>
+          <div style="display:flex;gap:4px;flex-shrink:0">
+            <button class="btn btn-sm btn-primary" style="padding:4px 8px;font-size:10px" onclick="restoreVersion('${v.filename}', '${v.label.replace(/'/g, "\\'")}')">
+              <span class="material-icons-outlined" style="font-size:12px">restore</span> 복원
+            </button>
+            <button class="btn btn-sm" style="padding:4px;background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.2)" onclick="deleteVersion('${v.filename}')">
+              <span class="material-icons-outlined" style="font-size:12px">delete</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    list.innerHTML = `<div style="color:var(--accent-red);padding:16px;text-align:center">로드 실패: ${err.message}</div>`;
+  }
+}
+
+window.saveVersion = async function () {
+  const label = prompt("버전 이름을 입력하세요:", `위치수정_${new Date().toISOString().split("T")[0]}`);
+  if (!label) return;
+
+  const description = prompt("설명 (선택):", "");
+
+  try {
+    const result = await API.post("/api/versions/save", { label, description });
+    showToast(`버전 저장 완료: "${label}" (${result.course_count}개 골프장)`);
+    loadVersions();
+  } catch (err) {
+    alert("버전 저장 실패: " + err.message);
+  }
+};
+
+window.restoreVersion = async function (filename, label) {
+  if (!confirm(`"${label}" 버전으로 복원하시겠습니까?\n\n현재 데이터는 자동 백업됩니다.`)) return;
+
+  try {
+    const result = await API.post(`/api/versions/restore/${filename}`);
+    showToast(result.message);
+    loadData();
+    loadVersions();
+  } catch (err) {
+    alert("복원 실패: " + err.message);
+  }
+};
+
+window.deleteVersion = async function (filename) {
+  if (!confirm("이 버전을 삭제하시겠습니까?")) return;
+  try {
+    await API.delete(`/api/versions/${filename}`);
+    showToast("버전 삭제 완료");
+    loadVersions();
+  } catch (err) {
+    alert("삭제 실패: " + err.message);
+  }
+};
+
+window.exportData = function () {
+  window.open("/api/versions/export", "_blank");
+};
 
 // ============ EVENT LISTENERS ============
 function initEventListeners() {

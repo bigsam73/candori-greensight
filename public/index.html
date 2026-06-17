@@ -71,6 +71,10 @@
         <span class="material-icons-outlined">description</span>
         <span>리포트</span>
       </a>
+      <a href="#" class="nav-item" data-view="versions">
+        <span class="material-icons-outlined">history</span>
+        <span>버전 관리</span>
+      </a>
     </nav>
 
     <div class="sidebar-footer">
@@ -529,6 +533,47 @@
           리포트 생성
         </button>
         <div id="reportOutput" style="margin-top:24px"></div>
+      </div>
+    </div>
+
+    <!-- Version Management View -->
+    <div class="view" id="view-versions">
+      <div class="view-header">
+        <h2>버전 관리</h2>
+        <div class="header-controls">
+          <button class="btn btn-primary" onclick="saveVersion()">
+            <span class="material-icons-outlined">save</span>
+            현재 상태 저장
+          </button>
+          <button class="btn btn-secondary" onclick="exportData()">
+            <span class="material-icons-outlined">download</span>
+            JSON 내보내기
+          </button>
+        </div>
+      </div>
+
+      <!-- 현재 상태 -->
+      <div class="card" style="padding:16px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="card-icon green">
+            <span class="material-icons-outlined">check_circle</span>
+          </div>
+          <div>
+            <div style="font-size:14px;font-weight:600">현재 활성 데이터</div>
+            <div style="font-size:12px;color:var(--text-muted)" id="versionCurrentInfo">로딩 중...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 버전 목록 -->
+      <div class="card">
+        <div class="card-header">
+          <h3>저장된 버전</h3>
+          <span style="font-size:12px;color:var(--text-muted)" id="versionCount">0개</span>
+        </div>
+        <div id="versionsList" style="padding:8px;max-height:500px;overflow-y:auto">
+          <div class="loading"><div class="spinner"></div> 로딩 중...</div>
+        </div>
       </div>
     </div>
 
