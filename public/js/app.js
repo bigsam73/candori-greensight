@@ -629,8 +629,8 @@ async function loadPlanetBasemapLayer(map) {
 }
 
 function populatePlanetMosaicSelectors(mosaics) {
-  // 위성지도 뷰와 대시보드의 배경지도 드롭다운에 Planet 옵션 추가
-  ["fullMapLayer", "mapLayerSelect"].forEach((selId) => {
+  // 모든 배경지도 드롭다운에 Planet 옵션 추가 (위성지도, 대시보드, NDVI분석)
+  ["fullMapLayer", "mapLayerSelect", "ndviMapBgSelect"].forEach((selId) => {
     const sel = document.getElementById(selId);
     if (!sel) return;
     // 이미 Planet 옵션이 있으면 스킵
@@ -1835,7 +1835,18 @@ async function loadAnalysis(courseId) {
       <div class="card" style="margin-top:16px">
         <div class="card-header">
           <h3>위성별 NDVI 지도</h3>
-          <div class="card-controls" style="gap:4px" id="ndviMapSatTabs"></div>
+          <div class="card-controls" style="gap:4px;align-items:center">
+            <select id="ndviMapBgSelect" class="select-sm" onchange="changeNdviMapBackground(this.value)">
+              <option value="esri-clarity">ESRI Clarity (0.3m)</option>
+              <option value="google-hybrid" selected>Google 하이브리드</option>
+              <option value="google-sat">Google 위성</option>
+              <option value="esri">ESRI 위성</option>
+              <option value="osm">OpenStreetMap</option>
+              <option value="dark">다크 모드</option>
+            </select>
+            <div style="width:1px;height:18px;background:var(--border-color)"></div>
+            <div id="ndviMapSatTabs" style="display:flex;gap:4px"></div>
+          </div>
         </div>
         <div style="display:flex;gap:0;min-height:420px">
           <div id="ndviAnalysisMap" style="flex:1;min-height:400px"></div>
@@ -1998,6 +2009,44 @@ function renderAnalysisCharts(data, stats) {
 let ndviAnalysisMap = null;
 let ndviHeatLayers = {};
 
+const BG_TILE_URLS = {
+  "esri-clarity": { url: "https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", maxZoom: 20, attr: "ESRI Clarity" },
+  "google-hybrid": { url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", maxZoom: 21, attr: "Google" },
+  "google-sat": { url: "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", maxZoom: 21, attr: "Google" },
+  "esri": { url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", maxZoom: 19, attr: "ESRI" },
+  "osm": { url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", maxZoom: 19, attr: "OSM" },
+  "dark": { url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", maxZoom: 19, attr: "CartoDB" },
+};
+
+function createBgTileLayer(type) {
+  const cfg = BG_TILE_URLS[type] || BG_TILE_URLS["google-hybrid"];
+  return L.tileLayer(cfg.url, { maxZoom: cfg.maxZoom, attribution: cfg.attr });
+}
+
+window.changeNdviMapBackground = function (type) {
+  if (!ndviAnalysisMap) return;
+  if (ndviAnalysisMap._bgLayer) {
+    ndviAnalysisMap.removeLayer(ndviAnalysisMap._bgLayer);
+  }
+
+  // Planet Basemaps 지원
+  if (type.startsWith("planet-")) {
+    const mosaicName = type.replace("planet-", "");
+    const apiKey = state._planetMosaics?.[0]?.tileUrl?.match(/api_key=([^&]+)/)?.[1];
+    if (apiKey) {
+      const url = `https://tiles.planet.com/basemaps/v1/planet-tiles/${mosaicName}/gmap/{z}/{x}/{y}.png?api_key=${apiKey}`;
+      ndviAnalysisMap._bgLayer = L.tileLayer(url, { maxZoom: 20, attribution: "Planet " + mosaicName });
+    } else {
+      ndviAnalysisMap._bgLayer = createBgTileLayer("google-hybrid");
+    }
+  } else {
+    ndviAnalysisMap._bgLayer = createBgTileLayer(type);
+  }
+
+  ndviAnalysisMap._bgLayer.addTo(ndviAnalysisMap);
+  ndviAnalysisMap._bgLayer.bringToBack();
+};
+
 function renderNDVIMap(course, ndviData) {
   const container = document.getElementById("ndviAnalysisMap");
   const tabsEl = document.getElementById("ndviMapSatTabs");
@@ -2030,10 +2079,9 @@ function renderNDVIMap(course, ndviData) {
     attributionControl: false,
   }).setView([course.lat, course.lng], 15);
 
-  // Google Hybrid background
-  L.tileLayer("https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", {
-    maxZoom: 21, attribution: "Google",
-  }).addTo(ndviAnalysisMap);
+  // Background tile (교체 가능)
+  ndviAnalysisMap._bgLayer = createBgTileLayer("google-hybrid");
+  ndviAnalysisMap._bgLayer.addTo(ndviAnalysisMap);
 
   // Course boundary (다중 폴리곤 지원)
   const boundaries = parseBoundary(course.boundary);
