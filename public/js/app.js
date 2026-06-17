@@ -1050,6 +1050,264 @@ function showSelectedDateDetail(course, record) {
   showNDVIOverlay(course.id, record.date, record.satellite, record.ndvi_mean);
 }
 
+// ============ DRONE IMAGERY (드론 정사영상) ============
+
+async function loadDroneImages(courseId) {
+  const container = document.getElementById("droneImagesList");
+  if (!container) return;
+
+  try {
+    const result = await API.get(`/api/drone/${courseId}`);
+    if (!result.ok || result.images.length === 0) {
+      container.innerHTML = `
+        <div style="color:var(--text-muted);font-size:12px;text-align:center;padding:16px">
+          <span class="material-icons-outlined" style="font-size:32px;display:block;margin-bottom:4px">flight</span>
+          드론 정사영상을 업로드하면 위성영상과 비교 분석할 수 있습니다
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+        ${result.images.map((img) => `
+          <div class="drone-image-card" style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;overflow:hidden;cursor:pointer" onclick="showDroneOnMap(${img.course_id}, ${img.id})">
+            <div style="height:120px;background:var(--bg-input);display:flex;align-items:center;justify-content:center;overflow:hidden">
+              <img src="${img.url}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'material-icons-outlined\\' style=\\'font-size:40px;color:var(--text-muted)\\'>flight</span>'">
+            </div>
+            <div style="padding:8px">
+              <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${img.name}</div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${img.date} | ${Math.round(img.size / 1024)}KB</div>
+              <div style="display:flex;gap:4px;margin-top:6px">
+                <button class="btn btn-sm btn-primary" style="flex:1;justify-content:center;padding:3px 6px;font-size:10px" onclick="event.stopPropagation(); showDroneOnMap(${img.course_id}, ${img.id})">
+                  <span class="material-icons-outlined" style="font-size:12px">map</span> 지도표시
+                </button>
+                <button class="btn btn-sm" style="padding:3px 6px;background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.2)" onclick="event.stopPropagation(); deleteDroneImage(${img.course_id}, ${img.id}, '${img.name.replace(/'/g, "\\'")}')">
+                  <span class="material-icons-outlined" style="font-size:12px">delete</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  } catch (err) {
+    console.error("Drone images load error:", err);
+  }
+}
+
+window.openDroneUpload = function (courseId) {
+  // 모달 동적 생성
+  let modal = document.getElementById("droneUploadModal");
+  if (modal) modal.remove();
+
+  modal = document.createElement("div");
+  modal.id = "droneUploadModal";
+  modal.className = "modal active";
+  modal.innerHTML = `
+    <div class="modal-content" style="width:500px;max-width:90vw">
+      <div class="modal-header">
+        <h3>드론 정사영상 업로드</h3>
+        <button class="btn-icon" onclick="this.closest('.modal').remove()">&times;</button>
+      </div>
+      <div style="padding:20px">
+        <div id="droneDropZone" style="border:2px dashed var(--border-color);border-radius:10px;padding:40px 20px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px">
+          <span class="material-icons-outlined" style="font-size:48px;color:var(--text-muted);display:block;margin-bottom:8px">cloud_upload</span>
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px">이미지 파일을 드래그하거나 클릭하세요</div>
+          <div style="font-size:11px;color:var(--text-muted)">지원 형식: TIFF, GeoTIFF, PNG, JPG, WebP (최대 500MB)</div>
+          <input type="file" id="droneFileInput" accept=".tif,.tiff,.png,.jpg,.jpeg,.webp,.geotiff" style="display:none" multiple>
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label style="font-size:12px;color:var(--text-secondary)">영상 이름</label>
+          <input type="text" id="droneImageName" class="edit-input" placeholder="예: 2026년 6월 드론 매핑">
+        </div>
+        <div class="form-group" style="margin-bottom:10px">
+          <label style="font-size:12px;color:var(--text-secondary)">촬영 날짜</label>
+          <input type="date" id="droneImageDate" class="edit-input" value="${new Date().toISOString().split("T")[0]}">
+        </div>
+        <div class="form-group" style="margin-bottom:16px">
+          <label style="font-size:12px;color:var(--text-secondary)">설명 (선택)</label>
+          <input type="text" id="droneImageDesc" class="edit-input" placeholder="DJI Mavic 3, 고도 80m, GSD 2cm">
+        </div>
+        <div id="droneUploadPreview" style="display:none;margin-bottom:16px"></div>
+        <div id="droneUploadProgress" style="display:none;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="spinner" style="width:16px;height:16px"></div>
+            <span style="font-size:12px;color:var(--text-secondary)" id="droneUploadStatus">업로드 중...</span>
+          </div>
+          <div style="margin-top:6px;height:4px;background:var(--bg-input);border-radius:2px;overflow:hidden">
+            <div id="droneUploadBar" style="height:100%;background:var(--accent-green);width:0%;transition:width 0.3s"></div>
+          </div>
+        </div>
+        <button class="btn btn-primary" style="width:100%;justify-content:center" id="droneUploadBtn" disabled onclick="uploadDroneImage(${courseId})">
+          <span class="material-icons-outlined">upload</span>
+          업로드
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  // 드래그&드롭 + 클릭 이벤트
+  const dropZone = document.getElementById("droneDropZone");
+  const fileInput = document.getElementById("droneFileInput");
+
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.style.borderColor = "var(--accent-green)"; dropZone.style.background = "rgba(74,222,128,0.05)"; });
+  dropZone.addEventListener("dragleave", () => { dropZone.style.borderColor = "var(--border-color)"; dropZone.style.background = ""; });
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = "var(--border-color)";
+    dropZone.style.background = "";
+    if (e.dataTransfer.files.length > 0) handleDroneFileSelect(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", (e) => {
+    if (e.target.files.length > 0) handleDroneFileSelect(e.target.files[0]);
+  });
+};
+
+let _selectedDroneFile = null;
+
+function handleDroneFileSelect(file) {
+  _selectedDroneFile = file;
+  const preview = document.getElementById("droneUploadPreview");
+  const btn = document.getElementById("droneUploadBtn");
+  const nameInput = document.getElementById("droneImageName");
+
+  if (!nameInput.value) nameInput.value = file.name.replace(/\.[^.]+$/, "");
+
+  preview.style.display = "block";
+  preview.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-primary);border-radius:8px;border:1px solid var(--border-color)">
+      <span class="material-icons-outlined" style="font-size:24px;color:var(--accent-green)">check_circle</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${file.name}</div>
+        <div style="font-size:10px;color:var(--text-muted)">${(file.size / 1024 / 1024).toFixed(1)} MB | ${file.type || "image"}</div>
+      </div>
+    </div>
+  `;
+  btn.disabled = false;
+}
+
+window.uploadDroneImage = async function (courseId) {
+  if (!_selectedDroneFile) return;
+
+  const btn = document.getElementById("droneUploadBtn");
+  const progress = document.getElementById("droneUploadProgress");
+  const bar = document.getElementById("droneUploadBar");
+  const statusEl = document.getElementById("droneUploadStatus");
+
+  btn.disabled = true;
+  progress.style.display = "block";
+  statusEl.textContent = "업로드 중...";
+  bar.style.width = "0%";
+
+  const formData = new FormData();
+  formData.append("image", _selectedDroneFile);
+  formData.append("name", document.getElementById("droneImageName").value || _selectedDroneFile.name);
+  formData.append("date", document.getElementById("droneImageDate").value);
+  formData.append("description", document.getElementById("droneImageDesc").value);
+
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/drone/${courseId}/upload`);
+
+    xhr.upload.addEventListener("progress", (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        bar.style.width = pct + "%";
+        statusEl.textContent = `업로드 중... ${pct}%`;
+      }
+    });
+
+    xhr.onload = function () {
+      if (xhr.status === 200) {
+        const result = JSON.parse(xhr.responseText);
+        statusEl.textContent = "업로드 완료!";
+        bar.style.width = "100%";
+        showToast(`드론 영상 업로드 완료: ${result.image.name}`);
+
+        // 모달 닫기 + 목록 새로고침
+        setTimeout(() => {
+          document.getElementById("droneUploadModal")?.remove();
+          _selectedDroneFile = null;
+          loadDroneImages(courseId);
+        }, 1000);
+      } else {
+        statusEl.textContent = "업로드 실패";
+        btn.disabled = false;
+      }
+    };
+
+    xhr.onerror = function () {
+      statusEl.textContent = "네트워크 오류";
+      btn.disabled = false;
+    };
+
+    xhr.send(formData);
+  } catch (err) {
+    statusEl.textContent = "업로드 실패: " + err.message;
+    btn.disabled = false;
+  }
+};
+
+window.showDroneOnMap = async function (courseId, imageId) {
+  try {
+    const result = await API.get(`/api/drone/${courseId}`);
+    const img = result.images.find((i) => i.id === imageId);
+    if (!img) return;
+
+    // NDVI 분석 지도에 오버레이
+    if (ndviAnalysisMap && img.bounds) {
+      // 기존 드론 오버레이 제거
+      if (ndviAnalysisMap._droneOverlay) ndviAnalysisMap.removeLayer(ndviAnalysisMap._droneOverlay);
+
+      const imageBounds = [img.bounds.sw, img.bounds.ne];
+      ndviAnalysisMap._droneOverlay = L.imageOverlay(img.url, imageBounds, {
+        opacity: 0.9,
+        interactive: true,
+      }).addTo(ndviAnalysisMap);
+
+      ndviAnalysisMap.fitBounds(imageBounds, { padding: [20, 20] });
+
+      // 드론 영상 범례
+      if (ndviAnalysisMap._droneLegend) ndviAnalysisMap.removeControl(ndviAnalysisMap._droneLegend);
+      const legend = L.control({ position: "bottomright" });
+      legend.onAdd = function () {
+        const div = L.DomUtil.create("div");
+        div.innerHTML = `
+          <div style="background:rgba(30,33,48,0.92);padding:8px 10px;border-radius:8px;border:1px solid var(--border-color);font-size:10px;color:#e8eaf0">
+            <div style="font-weight:600;color:var(--accent-blue)">드론 정사영상</div>
+            <div>${img.name} | ${img.date}</div>
+            <div style="color:var(--text-muted)">${img.description || ""}</div>
+            <button onclick="ndviAnalysisMap.removeLayer(ndviAnalysisMap._droneOverlay);ndviAnalysisMap.removeControl(ndviAnalysisMap._droneLegend)" 
+              style="margin-top:4px;padding:2px 8px;background:rgba(248,113,113,0.15);color:#f87171;border:1px solid rgba(248,113,113,0.3);border-radius:3px;font-size:9px;cursor:pointer;font-family:inherit;border:none">
+              드론 영상 숨기기
+            </button>
+          </div>
+        `;
+        return div;
+      };
+      legend.addTo(ndviAnalysisMap);
+      ndviAnalysisMap._droneLegend = legend;
+
+      showToast(`드론 영상 표시: ${img.name}`);
+    }
+  } catch (err) {
+    console.error("드론 영상 표시 실패:", err);
+  }
+};
+
+window.deleteDroneImage = async function (courseId, imageId, imageName) {
+  if (!confirm(`"${imageName}" 드론 영상을 삭제하시겠습니까?`)) return;
+  try {
+    await API.delete(`/api/drone/${courseId}/${imageId}`);
+    showToast(`"${imageName}" 삭제 완료`);
+    loadDroneImages(courseId);
+  } catch (err) {
+    alert("삭제 실패: " + err.message);
+  }
+};
+
 // ── Map Overlay: 식생 지수 히트맵 (범용) ──────────────────────────
 
 // 식생 지수 메타정보 (프론트용)
@@ -1854,6 +2112,23 @@ async function loadAnalysis(courseId) {
         </div>
       </div>
 
+      <!-- Drone Imagery -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <h3>드론 정사영상</h3>
+          <button class="btn btn-sm btn-primary" onclick="openDroneUpload(${courseId})">
+            <span class="material-icons-outlined">flight</span>
+            영상 업로드
+          </button>
+        </div>
+        <div id="droneImagesList" style="padding:12px">
+          <div style="color:var(--text-muted);font-size:12px;text-align:center;padding:16px">
+            <span class="material-icons-outlined" style="font-size:32px;display:block;margin-bottom:4px">flight</span>
+            드론 정사영상을 업로드하면 위성영상과 비교 분석할 수 있습니다
+          </div>
+        </div>
+      </div>
+
       <!-- Zones -->
       ${course.zones && course.zones.length > 0 ? `
         <div class="card" style="margin-top:16px">
@@ -1889,6 +2164,13 @@ async function loadAnalysis(courseId) {
       renderNDVIMap(course, ndviData);
     } catch (mapErr) {
       console.error("NDVI map render error:", mapErr);
+    }
+
+    // Load drone images
+    try {
+      loadDroneImages(courseId);
+    } catch (droneErr) {
+      console.error("Drone images load error:", droneErr);
     }
   } catch (err) {
     content.innerHTML = `<div class="loading" style="color:var(--accent-red)">데이터 로드 실패: ${err.message || err}</div>`;

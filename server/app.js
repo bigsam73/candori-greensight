@@ -9,6 +9,7 @@ const satelliteService = require("./services/satellite");
 const golfCourseRoutes = require("./routes/golfCourses");
 const ndviRoutes = require("./routes/ndvi");
 const alertRoutes = require("./routes/alerts");
+const droneRoutes = require("./routes/droneImages");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,6 +23,7 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 app.use("/api/golf-courses", golfCourseRoutes);
 app.use("/api/ndvi", ndviRoutes);
 app.use("/api/alerts", alertRoutes);
+app.use("/api/drone", droneRoutes);
 
 // Platform configuration endpoint (위성 인증 상태)
 app.get("/api/config", (req, res) => {

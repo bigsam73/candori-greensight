@@ -26,3 +26,7 @@ Thumbs.db
 public/img/planet_*
 public/img/s2_*
 public/img/basemap_*
+
+# 드론 영상 업로드 (용량이 크므로 git 제외)
+public/uploads/drone/
+server/data/drone_images.json
