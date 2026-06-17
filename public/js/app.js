@@ -489,7 +489,12 @@ function renderCoursesGrid() {
       return `
       <div class="card course-card" data-course-id="${c.id}">
         <div class="course-card-header">
-          <div class="course-card-name">${c.name}</div>
+          <div class="course-card-name" style="display:flex;align-items:center;gap:4px">
+            <span class="course-name-text" id="courseName_${c.id}">${c.name}</span>
+            <button class="rename-btn" onclick="event.stopPropagation(); startRenameCourse(${c.id}, '${c.name.replace(/'/g, "\\'")}')" title="이름 변경">
+              <span class="material-icons-outlined" style="font-size:14px">edit</span>
+            </button>
+          </div>
           <span class="course-card-region">${c.region || "-"}</span>
         </div>
         <div style="font-size:12px;color:var(--text-muted)">${c.address || ""}</div>
@@ -3568,6 +3573,54 @@ window.toggleEditLocationFullscreen = function () {
     }
   });
 })();
+
+window.startRenameCourse = function (courseId, currentName) {
+  const nameEl = document.getElementById(`courseName_${courseId}`);
+  if (!nameEl) return;
+
+  const container = nameEl.parentElement;
+  const renameBtn = container.querySelector(".rename-btn");
+  if (renameBtn) renameBtn.style.display = "none";
+
+  nameEl.style.display = "none";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "rename-input";
+  input.value = currentName;
+  container.insertBefore(input, nameEl);
+  input.focus();
+  input.select();
+
+  async function saveRename() {
+    const newName = input.value.trim();
+    if (newName && newName !== currentName) {
+      try {
+        await API.put(`/api/golf-courses/${courseId}`, { name: newName });
+        showToast(`골프장 이름 변경: "${currentName}" → "${newName}"`);
+        loadData();
+      } catch (err) {
+        alert("이름 변경 실패: " + err.message);
+        cancelRename();
+      }
+    } else {
+      cancelRename();
+    }
+  }
+
+  function cancelRename() {
+    input.remove();
+    nameEl.style.display = "";
+    if (renameBtn) renameBtn.style.display = "";
+  }
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); saveRename(); }
+    if (e.key === "Escape") { cancelRename(); }
+  });
+  input.addEventListener("blur", () => {
+    setTimeout(saveRename, 100);
+  });
+};
 
 window.deleteCourse = async function (courseId, courseName) {
   if (!confirm(`"${courseName}"을(를) 삭제하시겠습니까?\n관련 NDVI 데이터도 모두 삭제됩니다.`)) return;

@@ -1329,6 +1329,35 @@ body {
 }
 .poly-label::before { display: none !important; }
 
+/* ============ RENAME BUTTON ============ */
+.rename-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: all var(--transition);
+}
+.course-card-header:hover .rename-btn { opacity: 1; }
+.rename-btn:hover { color: var(--accent-green); background: rgba(74,222,128,0.1); }
+
+.rename-input {
+  background: var(--bg-input);
+  border: 1px solid var(--accent-green);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 2px 6px;
+  outline: none;
+  width: 100%;
+}
+
 /* ============ VEGETATION INDEX BUTTONS ============ */
 .vi-btn {
   display: flex;
