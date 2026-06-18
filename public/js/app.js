@@ -514,9 +514,13 @@ function renderCoursesGrid() {
           <div class="info-item"><span>갱신:</span> ${c.latest_date || "-"}</div>
         </div>
         <div style="display:flex;gap:6px;margin-top:10px">
-          <button class="btn btn-sm btn-secondary edit-location-btn" data-id="${c.id}" style="flex:1;justify-content:center" onclick="event.stopPropagation(); openEditLocationModal(${c.id})">
+          <button class="btn btn-sm btn-secondary" style="flex:1;justify-content:center" onclick="event.stopPropagation(); openEditLocationModal(${c.id})">
             <span class="material-icons-outlined">edit_location_alt</span>
-            위치/영역 수정
+            위치수정
+          </button>
+          <button class="btn btn-sm" style="flex:1;justify-content:center;background:rgba(96,165,250,0.1);color:#60a5fa;border:1px solid rgba(96,165,250,0.2)" onclick="event.stopPropagation(); openDroneUpload(${c.id})">
+            <span class="material-icons-outlined">flight</span>
+            드론영상
           </button>
           <button class="btn btn-sm" style="justify-content:center;background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.2)" onclick="event.stopPropagation(); deleteCourse(${c.id}, '${c.name.replace(/'/g, "\\'")}')">
             <span class="material-icons-outlined">delete</span>
@@ -1111,8 +1115,9 @@ window.openDroneUpload = function (courseId) {
   modal = document.createElement("div");
   modal.id = "droneUploadModal";
   modal.className = "modal active";
+  modal.style.cssText = "z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px)";
   modal.innerHTML = `
-    <div class="modal-content" style="width:500px;max-width:90vw">
+    <div class="modal-content" style="width:500px;max-width:90vw;z-index:10000">
       <div class="modal-header">
         <h3>드론 정사영상 업로드</h3>
         <button class="btn-icon" onclick="this.closest('.modal').remove()">&times;</button>
@@ -1121,7 +1126,7 @@ window.openDroneUpload = function (courseId) {
         <div id="droneDropZone" style="border:2px dashed var(--border-color);border-radius:10px;padding:40px 20px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px">
           <span class="material-icons-outlined" style="font-size:48px;color:var(--text-muted);display:block;margin-bottom:8px">cloud_upload</span>
           <div style="font-size:14px;font-weight:600;margin-bottom:4px">이미지 파일을 드래그하거나 클릭하세요</div>
-          <div style="font-size:11px;color:var(--text-muted)">지원 형식: TIFF, GeoTIFF, PNG, JPG, WebP (최대 500MB)</div>
+          <div style="font-size:11px;color:var(--text-muted)">지원 형식: TIFF, GeoTIFF, PNG, JPG, WebP (최대 5GB)</div>
           <input type="file" id="droneFileInput" accept=".tif,.tiff,.png,.jpg,.jpeg,.webp,.geotiff" style="display:none" multiple>
         </div>
         <div class="form-group" style="margin-bottom:10px">
