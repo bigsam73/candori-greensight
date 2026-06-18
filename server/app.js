@@ -17,8 +17,18 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
+
+// 대용량 드론 영상 업로드 타임아웃 (5GB 지원)
+app.use((req, res, next) => {
+  if (req.url.includes("/api/drone") && req.method === "POST") {
+    req.setTimeout(30 * 60 * 1000); // 30분
+    res.setTimeout(30 * 60 * 1000);
+  }
+  next();
+});
 
 // API Routes
 app.use("/api/golf-courses", golfCourseRoutes);
