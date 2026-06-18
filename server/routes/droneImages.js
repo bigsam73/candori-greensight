@@ -55,8 +55,56 @@ function saveDroneMeta(data) {
   fs.writeFileSync(getDroneMetaPath(), JSON.stringify(data, null, 2), "utf-8");
 }
 
+// 이미지 변환 (TIFF → PNG, 대용량 리사이즈)
+async function convertForWeb(filePath, courseDir, filename) {
+  let sharp;
+  try { sharp = require("sharp"); } catch (e) { return null; }
+
+  const ext = path.extname(filename).toLowerCase();
+  const baseName = path.basename(filename, ext);
+
+  try {
+    const metadata = await sharp(filePath, { limitInputPixels: false }).metadata();
+    console.log(`[Drone] 원본: ${metadata.width}x${metadata.height} ${metadata.format} (${ext})`);
+
+    const results = {};
+
+    // 1) 지도 오버레이용 (최대 4096px, PNG)
+    const webName = `${baseName}_web.png`;
+    const webPath = path.join(courseDir, webName);
+    const maxDim = 4096;
+    let resizeOpts = {};
+    if (metadata.width > maxDim || metadata.height > maxDim) {
+      resizeOpts = { width: maxDim, height: maxDim, fit: "inside" };
+    }
+    await sharp(filePath, { limitInputPixels: false })
+      .resize(resizeOpts.width || maxDim, resizeOpts.height || maxDim, { fit: "inside", withoutEnlargement: true })
+      .png({ compressionLevel: 6 })
+      .toFile(webPath);
+    const webStat = fs.statSync(webPath);
+    results.webUrl = `/uploads/drone/course_${path.basename(courseDir).replace("course_", "")}/${webName}`;
+    results.webSize = webStat.size;
+    console.log(`[Drone] 웹용 변환: ${webName} (${Math.round(webStat.size / 1024)}KB)`);
+
+    // 2) 썸네일 (300px)
+    const thumbName = `${baseName}_thumb.jpg`;
+    const thumbPath = path.join(courseDir, thumbName);
+    await sharp(filePath, { limitInputPixels: false })
+      .resize(300, 300, { fit: "cover" })
+      .jpeg({ quality: 80 })
+      .toFile(thumbPath);
+    results.thumbUrl = `/uploads/drone/course_${path.basename(courseDir).replace("course_", "")}/${thumbName}`;
+    console.log(`[Drone] 썸네일 생성: ${thumbName}`);
+
+    return results;
+  } catch (err) {
+    console.error(`[Drone] 이미지 변환 실패:`, err.message);
+    return null;
+  }
+}
+
 // POST /api/drone/:courseId/upload - 드론 정사영상 업로드
-router.post("/:courseId/upload", upload.single("image"), (req, res) => {
+router.post("/:courseId/upload", upload.single("image"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "파일이 업로드되지 않았습니다" });
 
   const courseId = Number(req.params.courseId);
@@ -110,6 +158,22 @@ router.post("/:courseId/upload", upload.single("image"), (req, res) => {
     }
   }
 
+  // TIFF 등 웹 미지원 형식은 자동 변환
+  const ext = path.extname(req.file.filename).toLowerCase();
+  const needsConversion = [".tif", ".tiff", ".geotiff"].includes(ext);
+  let webUrl = `/uploads/drone/course_${courseId}/${req.file.filename}`;
+  let thumbUrl = webUrl;
+
+  if (needsConversion || req.file.size > 10 * 1024 * 1024) {
+    console.log(`[Drone] 웹 변환 시작 (${needsConversion ? "TIFF→PNG" : "대용량 리사이즈"})...`);
+    const courseDir = path.join(uploadDir, `course_${courseId}`);
+    const converted = await convertForWeb(req.file.path, courseDir, req.file.filename);
+    if (converted) {
+      webUrl = converted.webUrl;
+      if (converted.thumbUrl) thumbUrl = converted.thumbUrl;
+    }
+  }
+
   const imageRecord = {
     id: Date.now(),
     course_id: courseId,
@@ -121,7 +185,9 @@ router.post("/:courseId/upload", upload.single("image"), (req, res) => {
     originalname: req.file.originalname,
     size: req.file.size,
     mimetype: req.file.mimetype,
-    url: `/uploads/drone/course_${courseId}/${req.file.filename}`,
+    url: webUrl,           // 웹 표시용 (변환된 PNG)
+    url_original: `/uploads/drone/course_${courseId}/${req.file.filename}`, // 원본
+    url_thumb: thumbUrl,   // 썸네일
     bounds,
     uploaded_at: new Date().toISOString(),
   };
@@ -134,7 +200,7 @@ router.post("/:courseId/upload", upload.single("image"), (req, res) => {
 
   res.json({
     ok: true,
-    message: "드론 영상 업로드 완료",
+    message: "드론 영상 업로드 완료" + (needsConversion ? " (TIFF→PNG 변환됨)" : ""),
     image: imageRecord,
   });
 });
@@ -172,6 +238,31 @@ router.delete("/:courseId/:imageId", (req, res) => {
   saveDroneMeta(meta);
 
   res.json({ ok: true, message: "드론 영상 삭제 완료" });
+});
+
+// POST /api/drone/reconvert/:imageId - 기존 이미지 재변환
+router.post("/reconvert/:imageId", async (req, res) => {
+  const imageId = Number(req.params.imageId);
+  const meta = loadDroneMeta();
+  const img = meta.images.find((i) => i.id === imageId);
+  if (!img) return res.status(404).json({ error: "이미지를 찾을 수 없습니다" });
+
+  const originalPath = path.join(__dirname, "..", "..", "public", img.url_original || img.url);
+  if (!fs.existsSync(originalPath)) {
+    return res.status(404).json({ error: "원본 파일을 찾을 수 없습니다" });
+  }
+
+  const courseDir = path.dirname(originalPath);
+  const converted = await convertForWeb(originalPath, courseDir, path.basename(originalPath));
+  if (converted) {
+    if (!img.url_original) img.url_original = img.url;
+    img.url = converted.webUrl;
+    if (converted.thumbUrl) img.url_thumb = converted.thumbUrl;
+    saveDroneMeta(meta);
+    res.json({ ok: true, message: "변환 완료", url: converted.webUrl });
+  } else {
+    res.status(500).json({ error: "변환 실패" });
+  }
 });
 
 module.exports = router;

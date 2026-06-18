@@ -1081,14 +1081,17 @@ async function loadDroneImages(courseId) {
 
     container.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
-        ${result.images.map((img) => `
+        ${result.images.map((img) => {
+          const thumbSrc = img.url_thumb || img.url;
+          const sizeMB = (img.size / 1024 / 1024).toFixed(1);
+          return `
           <div class="drone-image-card" style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;overflow:hidden;cursor:pointer" onclick="showDroneOnMap(${img.course_id}, ${img.id})">
             <div style="height:120px;background:var(--bg-input);display:flex;align-items:center;justify-content:center;overflow:hidden">
-              <img src="${img.url}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'material-icons-outlined\\' style=\\'font-size:40px;color:var(--text-muted)\\'>flight</span>'">
+              <img src="${thumbSrc}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.parentElement.innerHTML='<span class=\\'material-icons-outlined\\' style=\\'font-size:40px;color:var(--text-muted)\\'>flight</span>'">
             </div>
             <div style="padding:8px">
               <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${img.name}</div>
-              <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${img.date} | ${Math.round(img.size / 1024)}KB</div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${img.date} | ${sizeMB}MB${img.url !== img.url_original ? ' | PNG변환됨' : ''}</div>
               <div style="display:flex;gap:4px;margin-top:6px">
                 <button class="btn btn-sm btn-primary" style="flex:1;justify-content:center;padding:3px 6px;font-size:10px" onclick="event.stopPropagation(); showDroneOnMap(${img.course_id}, ${img.id})">
                   <span class="material-icons-outlined" style="font-size:12px">map</span> 지도표시
@@ -1099,7 +1102,7 @@ async function loadDroneImages(courseId) {
               </div>
             </div>
           </div>
-        `).join("")}
+        `;}).join("")}
       </div>
     `;
   } catch (err) {
