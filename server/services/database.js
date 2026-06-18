@@ -132,7 +132,38 @@ function createJsonStore() {
 }
 
 function initialize() {
+  const fs = require("fs");
   const database = getDb();
+
+  // ── 서버 시작 시 자동 안전 백업 ──
+  // user_data.json이 있으면 시작 전에 반드시 버전으로 저장
+  const userFilePath = path.join(__dirname, "..", "data", "user_data.json");
+  const versionsDir = path.join(__dirname, "..", "data", "versions");
+  if (!fs.existsSync(versionsDir)) fs.mkdirSync(versionsDir, { recursive: true });
+
+  if (fs.existsSync(userFilePath)) {
+    try {
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19);
+      const autoSave = path.join(versionsDir, `v_${ts}_auto_startup.json`);
+      const userData = JSON.parse(fs.readFileSync(userFilePath, "utf-8"));
+      userData._label = `자동 백업 (서버 시작 ${ts})`;
+      userData._description = "서버 시작 시 자동 저장된 안전 백업";
+      userData._saved_at = new Date().toISOString();
+      fs.writeFileSync(autoSave, JSON.stringify(userData, null, 2), "utf-8");
+      console.log(`[DB] 서버 시작 안전 백업: ${autoSave}`);
+
+      // 자동 백업은 최근 5개만 유지
+      const autoBackups = fs.readdirSync(versionsDir)
+        .filter((f) => f.includes("auto_startup"))
+        .sort()
+        .reverse();
+      autoBackups.slice(5).forEach((f) => {
+        try { fs.unlinkSync(path.join(versionsDir, f)); } catch (_) {}
+      });
+    } catch (e) {
+      console.error("[DB] 서버 시작 백업 실패:", e.message);
+    }
+  }
 
   if (database._type === "sqlite") {
     database.exec(`
@@ -203,6 +234,13 @@ function initialize() {
 
   // Insert sample Korean golf courses
   seedGolfCourses(database);
+
+  // ── 초기화 완료 후 user_data 즉시 갱신 ──
+  // seed + merge 결과를 user_data에 저장하여 다음 시작에도 유지
+  if (database._saveUserData) {
+    database._saveUserData();
+    console.log("[DB] 초기화 후 user_data.json 갱신 완료");
+  }
 
   console.log("[DB] 데이터베이스 초기화 완료");
 }

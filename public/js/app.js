@@ -1042,10 +1042,11 @@ function showSelectedDateDetail(course, record) {
         </button>
       </div>
     </div>
-    <!-- Planet / 환경 데이터 -->
+    <!-- Planet / SAR / 환경 데이터 -->
     <div style="display:flex;gap:4px;margin-top:6px">
       <button class="vi-btn" style="flex:1;--vi-color:#fb923c" onclick="requestPlanetImage('${course.id}','${record.date}','ndvi')">Planet NDVI</button>
       <button class="vi-btn" style="flex:1;--vi-color:#60a5fa" onclick="requestPlanetImage('${course.id}','${record.date}','rgb')">Planet RGB</button>
+      <button class="vi-btn" style="flex:1;--vi-color:#a78bfa" onclick="showIndexOverlay('${course.id}','${record.date}','sar_moisture',${record.ndvi_mean})">SAR 수분</button>
     </div>
     <div id="overlayStatus" style="margin-top:6px;font-size:10px;color:var(--text-muted)"></div>
   `;
@@ -1328,6 +1329,7 @@ const VI_META = {
   ndmi:   { name: "NDMI",   full: "Normalized Difference Moisture Index",  color: "#38bdf8", unit: "", range: [-0.3, 0.5], good: 0.1, desc: "잔디 수분 스트레스 / 관수 판단" },
   cire:   { name: "CIre",   full: "Chlorophyll Index Red Edge",            color: "#4ade80", unit: "", range: [0, 5],    good: 1.5, desc: "엽록소 함량 / 시비 효과" },
   gli:    { name: "GLI",    full: "Green Leaf Index",                      color: "#86efac", unit: "", range: [-0.3, 0.5], good: 0.1, desc: "잔디 녹색도 (RGB 기반)" },
+  sar_moisture: { name: "SAR 수분", full: "Sentinel-1 SAR Soil Moisture", color: "#a78bfa", unit: "", range: [0, 1], good: 0.5, desc: "구름 무관 토양수분 (C-band 후방산란)" },
 };
 
 window.showIndexOverlay = function (courseId, date, indexId, ndviMean) {
@@ -1362,6 +1364,7 @@ window.showIndexOverlay = function (courseId, date, indexId, ndviMean) {
       case "ndmi":   value = value * 0.6 - 0.1; break;
       case "cire":   value = value * 3.5; break;
       case "gli":    value = value * 0.5 - 0.1; break;
+      case "sar_moisture": value = 0.3 + value * 0.5 + (Math.random() - 0.5) * 0.15; break;
     }
 
     const norm = (value - meta.range[0]) / (meta.range[1] - meta.range[0]);

@@ -242,6 +242,28 @@ const SATELLITE_CATALOG = [
     enabled: true,
     tier: "basic",
   },
+  // ===== SAR =====
+  {
+    id: "sentinel-1",
+    name: "Sentinel-1 SAR (C-band)",
+    provider: "ESA Copernicus",
+    resolution: "5x20m",
+    resolution_m: 10,
+    revisit: "6일",
+    bands_nir: "VV, VH (후방산란 편파)",
+    bands_red: "-",
+    ndvi_formula: "후방산란 기반 토양수분 추정",
+    coverage: "전 세계",
+    cost: "완전 무료",
+    api_url: "https://services.sentinel-hub.com/api/v1/process",
+    auth: "Sentinel Hub OAuth2 또는 Copernicus Data Space",
+    env_key: "SENTINEL_HUB_CLIENT_ID",
+    data_format: "GeoTIFF / PNG",
+    pros: "구름 무관(전천후), 야간 관측 가능, 토양수분 추정, 장마철 보완 데이터",
+    cons: "직접적 식생 지수 아닌 후방산란, 해석에 전문성 필요",
+    enabled: true,
+    tier: "standard",
+  },
   // ===== Planetary Variables (골프장 관리 핵심) =====
   {
     id: "soil-water-content",
@@ -668,6 +690,49 @@ function setup() {
 function evaluatePixel(s) {
   let gain = 3.5;
   return [s.red * gain, s.green * gain, s.blue * gain];
+}
+`;
+
+// ─── Sentinel-1 SAR Evalscripts ──────────────────────────────────
+
+// SAR 후방산란 (VV/VH) - 토양수분 추정용
+const SENTINEL1_SAR_EVALSCRIPT = `
+//VERSION=3
+function setup() {
+  return { input: [{ bands: ["VV", "VH"] }], output: { bands: 3 } };
+}
+function evaluatePixel(s) {
+  let vv = Math.max(0, Math.log(s.VV) * 0.21714724095 + 1);
+  let vh = Math.max(0, Math.log(s.VH) * 0.21714724095 + 1);
+  let ratio = vh / (vv + 0.0001);
+  // VH/VV 비율 → 토양수분 프록시 (높을수록 수분 많음)
+  let r = Math.max(0, 1 - ratio * 2);
+  let g = Math.max(0, ratio * 2);
+  let b = Math.max(0, vv * 0.5);
+  return [r, g, b];
+}
+`;
+
+// SAR 수분 지수 (색상 매핑)
+const SENTINEL1_MOISTURE_EVALSCRIPT = `
+//VERSION=3
+function setup() {
+  return { input: [{ bands: ["VV", "VH"] }], output: { bands: 3 } };
+}
+function evaluatePixel(s) {
+  let vvDb = 10 * Math.log10(s.VV);
+  let vhDb = 10 * Math.log10(s.VH);
+  let moisture = (vhDb + 25) / 20; // 대략적 정규화 (0~1)
+  moisture = Math.max(0, Math.min(1, moisture));
+  // 건조(갈색) → 적정(초록) → 과습(파랑)
+  let r, g, b;
+  if (moisture < 0.3) { r=0.7; g=0.4; b=0.2; }
+  else if (moisture < 0.4) { r=0.8; g=0.7; b=0.2; }
+  else if (moisture < 0.5) { r=0.4; g=0.8; b=0.3; }
+  else if (moisture < 0.6) { r=0.2; g=0.7; b=0.4; }
+  else if (moisture < 0.7) { r=0.1; g=0.5; b=0.7; }
+  else { r=0.05; g=0.3; b=0.8; }
+  return [r, g, b];
 }
 `;
 
