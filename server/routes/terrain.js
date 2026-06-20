@@ -384,4 +384,81 @@ router.delete("/lidar/:courseId/:datasetId", (req, res) => {
   res.json({ ok: true, message: "LiDAR 데이터 삭제 완료" });
 });
 
+// ── 지표면/토양 온도 (LST) ──
+
+// GET /api/terrain/temperature/:courseId - 골프장 지표면 온도 (매시간)
+router.get("/temperature/:courseId", async (req, res) => {
+  const courseId = Number(req.params.courseId);
+  const dbMod = require("../services/database");
+  const database = dbMod.getDb();
+
+  let course;
+  if (database._type === "sqlite") {
+    course = database.prepare("SELECT * FROM golf_courses WHERE id = ?").get(courseId);
+  } else {
+    course = database._data.golf_courses.find((c) => c.id === courseId);
+  }
+  if (!course) return res.status(404).json({ error: "골프장을 찾을 수 없습니다" });
+
+  try {
+    // Open-Meteo: 매시간 토양온도 (무료, 키 불필요)
+    const r = await axios.get("https://api.open-meteo.com/v1/forecast", {
+      params: {
+        latitude: course.lat,
+        longitude: course.lng,
+        hourly: "temperature_2m,soil_temperature_0cm,soil_temperature_6cm,soil_temperature_18cm,soil_moisture_0_to_1cm,soil_moisture_1_to_3cm",
+        past_days: 3,
+        forecast_days: 2,
+        timezone: "Asia/Seoul",
+      },
+      timeout: 15000,
+    });
+
+    const hourly = r.data.hourly;
+
+    // 현재 시점 데이터
+    const now = new Date();
+    const nowStr = now.toISOString().substring(0, 13) + ":00";
+    const currentIdx = hourly.time?.findIndex((t) => t >= nowStr) || hourly.time?.length - 1;
+
+    const current = {
+      time: hourly.time?.[currentIdx],
+      air_temp: hourly.temperature_2m?.[currentIdx],
+      soil_0cm: hourly.soil_temperature_0cm?.[currentIdx],
+      soil_6cm: hourly.soil_temperature_6cm?.[currentIdx],
+      soil_18cm: hourly.soil_temperature_18cm?.[currentIdx],
+      soil_moisture_0_1cm: hourly.soil_moisture_0_to_1cm?.[currentIdx],
+      soil_moisture_1_3cm: hourly.soil_moisture_1_to_3cm?.[currentIdx],
+    };
+
+    // 열 스트레스 판단
+    let heatStress = "정상";
+    if (current.soil_0cm > 40) heatStress = "극심한 열 스트레스";
+    else if (current.soil_0cm > 35) heatStress = "열 스트레스 위험";
+    else if (current.soil_0cm > 30) heatStress = "고온 주의";
+
+    res.json({
+      ok: true,
+      course_id: courseId,
+      course_name: course.name,
+      source: "Open-Meteo (매시간, 무료)",
+      update_interval: "1시간",
+      current,
+      heat_stress: heatStress,
+      hourly: {
+        time: hourly.time,
+        air_temp: hourly.temperature_2m,
+        soil_0cm: hourly.soil_temperature_0cm,
+        soil_6cm: hourly.soil_temperature_6cm,
+        soil_18cm: hourly.soil_temperature_18cm,
+        soil_moisture_0_1cm: hourly.soil_moisture_0_to_1cm,
+        soil_moisture_1_3cm: hourly.soil_moisture_1_to_3cm,
+      },
+      total_hours: hourly.time?.length,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: "온도 데이터 조회 실패: " + e.message });
+  }
+});
+
 module.exports = router;

@@ -71,6 +71,10 @@
         <span class="material-icons-outlined">description</span>
         <span>리포트</span>
       </a>
+      <a href="#" class="nav-item" data-view="terrain">
+        <span class="material-icons-outlined">terrain</span>
+        <span>지형/LiDAR</span>
+      </a>
       <a href="#" class="nav-item" data-view="versions">
         <span class="material-icons-outlined">history</span>
         <span>버전 관리</span>
@@ -533,6 +537,24 @@
           리포트 생성
         </button>
         <div id="reportOutput" style="margin-top:24px"></div>
+      </div>
+    </div>
+
+    <!-- Terrain/LiDAR View -->
+    <div class="view" id="view-terrain">
+      <div class="view-header">
+        <h2>지형 분석 / LiDAR</h2>
+        <div class="header-controls">
+          <select id="terrainCourseSelect" class="select-md">
+            <option value="">골프장 선택...</option>
+          </select>
+        </div>
+      </div>
+      <div id="terrainContent">
+        <div style="text-align:center;padding:60px;color:var(--text-muted)">
+          <span class="material-icons-outlined" style="font-size:64px;display:block;margin-bottom:8px">terrain</span>
+          <p>분석할 골프장을 선택하세요</p>
+        </div>
       </div>
     </div>
 

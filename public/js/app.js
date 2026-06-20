@@ -330,6 +330,7 @@ function switchView(viewId) {
     alerts: "알림 센터",
     satellites: "위성 데이터 소스",
     report: "리포트",
+    terrain: "지형/LiDAR",
     versions: "버전 관리",
   };
   document.getElementById("pageTitle").textContent = titles[viewId] || viewId;
@@ -340,6 +341,7 @@ function switchView(viewId) {
   if (viewId === "analysis") initAnalysisView();
   if (viewId === "compare") initCompareView();
   if (viewId === "satellites") loadSatelliteCatalog();
+  if (viewId === "terrain") initTerrainView();
   if (viewId === "versions") loadVersions();
 
   // Close mobile sidebar
@@ -405,6 +407,7 @@ function populateCourseSelectors() {
     "analysisCourseSelect",
     "compareCourses",
     "reportCourse",
+    "terrainCourseSelect",
   ];
 
   selectors.forEach((id) => {
@@ -3816,6 +3819,274 @@ function calculateArea(coords) {
   const areaSqm = Math.round(area * latScale * lngScale);
   return areaSqm.toLocaleString();
 }
+
+// ============ TERRAIN / LiDAR (지형 분석) ============
+
+function initTerrainView() {
+  const select = document.getElementById("terrainCourseSelect");
+  if (!select._bound) {
+    select.addEventListener("change", (e) => {
+      if (e.target.value) loadTerrainAnalysis(e.target.value);
+    });
+    select._bound = true;
+  }
+  if (select.value) loadTerrainAnalysis(select.value);
+}
+
+async function loadTerrainAnalysis(courseId) {
+  const content = document.getElementById("terrainContent");
+  content.innerHTML = '<div class="loading"><div class="spinner"></div> 지형 데이터 분석 중...</div>';
+
+  try {
+    const [terrain, temp, lidar, course] = await Promise.all([
+      API.post(`/api/terrain/course/${courseId}`),
+      API.get(`/api/terrain/temperature/${courseId}`),
+      API.get(`/api/terrain/lidar/${courseId}`),
+      API.get(`/api/golf-courses/${courseId}`),
+    ]);
+
+    const t = terrain;
+    const elRange = t.max_elevation - t.min_elevation;
+    const cur = temp.current || {};
+    const heatColor = temp.heat_stress === "정상" ? "var(--accent-green)" :
+                      temp.heat_stress?.includes("주의") ? "var(--accent-orange)" : "var(--accent-red)";
+
+    content.innerHTML = `
+      <!-- 요약 카드 -->
+      <div class="summary-cards" style="margin-bottom:16px">
+        <div class="card summary-card">
+          <div class="card-icon blue"><span class="material-icons-outlined">terrain</span></div>
+          <div class="card-info">
+            <div class="card-value">${t.min_elevation}~${t.max_elevation}m</div>
+            <div class="card-label">고도 범위 (${t.source})</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon green"><span class="material-icons-outlined">landscape</span></div>
+          <div class="card-info">
+            <div class="card-value">${t.analysis?.slope?.mean?.toFixed(1) || "-"}°</div>
+            <div class="card-label">평균 경사도</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon" style="background:${heatColor}22;color:${heatColor}"><span class="material-icons-outlined">thermostat</span></div>
+          <div class="card-info">
+            <div class="card-value" style="color:${heatColor}">${cur.soil_0cm || "-"}°C</div>
+            <div class="card-label">지표면 온도 (${temp.heat_stress})</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon orange"><span class="material-icons-outlined">water_drop</span></div>
+          <div class="card-info">
+            <div class="card-value">${t.analysis?.drainage?.good_pct || "-"}%</div>
+            <div class="card-label">배수 양호 비율</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <!-- 지형 분석 상세 -->
+        <div class="card">
+          <div class="card-header"><h3>지형 분석 (${t.source})</h3></div>
+          <div style="padding:16px">
+            <div class="detail-grid">
+              <div class="detail-label">고도 범위</div><div class="detail-value">${t.min_elevation} ~ ${t.max_elevation} m (${elRange}m 차이)</div>
+              <div class="detail-label">경사도 (평균)</div><div class="detail-value">${t.analysis?.slope?.mean?.toFixed(2)}°</div>
+              <div class="detail-label">경사도 (최대)</div><div class="detail-value">${t.analysis?.slope?.max?.toFixed(2)}°</div>
+              <div class="detail-label">셀 크기</div><div class="detail-value">${t.analysis?.cell_size_m || "-"}m</div>
+              <div class="detail-label">배수 양호</div><div class="detail-value" style="color:var(--accent-green)">${t.analysis?.drainage?.good_pct}%</div>
+              <div class="detail-label">배수 보통</div><div class="detail-value" style="color:var(--accent-orange)">${t.analysis?.drainage?.moderate_pct}%</div>
+              <div class="detail-label">배수 불량</div><div class="detail-value" style="color:var(--accent-red)">${t.analysis?.drainage?.poor_pct}%</div>
+              <div class="detail-label">배수 판정</div><div class="detail-value">${t.analysis?.drainage?.description}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 온도 현황 -->
+        <div class="card">
+          <div class="card-header"><h3>지표면/토양 온도 (매시간)</h3></div>
+          <div style="padding:16px">
+            <div style="margin-bottom:12px;font-size:12px;color:var(--text-muted)">${temp.source} | 갱신: ${temp.update_interval}</div>
+            <div class="detail-grid">
+              <div class="detail-label">대기 온도</div><div class="detail-value">${cur.air_temp || "-"}°C</div>
+              <div class="detail-label">지표면 (0cm)</div><div class="detail-value" style="color:${heatColor}">${cur.soil_0cm || "-"}°C</div>
+              <div class="detail-label">토양 (6cm)</div><div class="detail-value">${cur.soil_6cm || "-"}°C</div>
+              <div class="detail-label">토양 (18cm)</div><div class="detail-value">${cur.soil_18cm || "-"}°C</div>
+              <div class="detail-label">토양수분 (0~1cm)</div><div class="detail-value">${cur.soil_moisture_0_1cm ? (cur.soil_moisture_0_1cm * 100).toFixed(1) + "%" : "-"}</div>
+              <div class="detail-label">토양수분 (1~3cm)</div><div class="detail-value">${cur.soil_moisture_1_3cm ? (cur.soil_moisture_1_3cm * 100).toFixed(1) + "%" : "-"}</div>
+              <div class="detail-label">열 스트레스</div><div class="detail-value" style="color:${heatColor};font-weight:600">${temp.heat_stress}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 온도 시계열 차트 -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>토양 온도 시계열 (최근 72시간 + 예보 48시간)</h3></div>
+        <div class="chart-wrapper" style="height:300px">
+          <canvas id="tempChart"></canvas>
+        </div>
+      </div>
+
+      <!-- LiDAR 데이터 -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-header">
+          <h3>드론 LiDAR 데이터</h3>
+          <button class="btn btn-sm btn-primary" onclick="openLidarUpload(${courseId})">
+            <span class="material-icons-outlined">flight</span> LiDAR 업로드
+          </button>
+        </div>
+        <div style="padding:12px">
+          ${lidar.count > 0 ? `
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+              ${lidar.datasets.map((ds) => `
+                <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:8px;padding:10px">
+                  <div style="font-size:12px;font-weight:600">${ds.name}</div>
+                  <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${ds.date} | ${ds.data_type?.toUpperCase()} | ${(ds.size/1024/1024).toFixed(1)}MB</div>
+                  ${ds.description ? `<div style="font-size:10px;color:var(--text-secondary);margin-top:2px">${ds.description}</div>` : ""}
+                  <div style="display:flex;gap:4px;margin-top:6px">
+                    <button class="btn btn-sm btn-primary" style="flex:1;font-size:10px;padding:3px" onclick="viewLidarData(${ds.course_id}, ${ds.id})">보기</button>
+                    <button class="btn btn-sm" style="padding:3px;background:rgba(248,113,113,0.1);color:#f87171" onclick="deleteLidarData(${ds.course_id}, ${ds.id})">
+                      <span class="material-icons-outlined" style="font-size:12px">delete</span>
+                    </button>
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          ` : `
+            <div style="text-align:center;padding:20px;color:var(--text-muted)">
+              <span class="material-icons-outlined" style="font-size:32px;display:block;margin-bottom:4px">flight</span>
+              드론 LiDAR 데이터(DSM/DTM)를 업로드하면 정밀 지형 분석이 가능합니다
+            </div>
+          `}
+        </div>
+      </div>
+    `;
+
+    // 온도 시계열 차트 렌더링
+    renderTempChart(temp.hourly);
+
+  } catch (err) {
+    content.innerHTML = `<div style="color:var(--accent-red);text-align:center;padding:40px">데이터 로드 실패: ${err.message}</div>`;
+    console.error(err);
+  }
+}
+
+function renderTempChart(hourly) {
+  const canvas = document.getElementById("tempChart");
+  if (!canvas || !hourly?.time) return;
+  if (state.charts?.tempChart) state.charts.tempChart.destroy();
+
+  state.charts.tempChart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: hourly.time.map((t) => t.substring(5, 16).replace("T", " ")),
+      datasets: [
+        { label: "대기 2m", data: hourly.air_temp, borderColor: "#60a5fa", borderWidth: 1.5, fill: false, tension: 0.3, pointRadius: 0 },
+        { label: "지표 0cm", data: hourly.soil_0cm, borderColor: "#f87171", borderWidth: 2, fill: false, tension: 0.3, pointRadius: 0 },
+        { label: "토양 6cm", data: hourly.soil_6cm, borderColor: "#fb923c", borderWidth: 1.5, fill: false, tension: 0.3, pointRadius: 0 },
+        { label: "토양 18cm", data: hourly.soil_18cm, borderColor: "#a78bfa", borderWidth: 1.5, fill: false, tension: 0.3, pointRadius: 0 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: "#9ba1b7", font: { size: 11 } } } },
+      scales: {
+        x: { grid: { color: "rgba(45,49,72,0.5)" }, ticks: { color: "#6b7194", font: { size: 9 }, maxTicksLimit: 20 } },
+        y: { grid: { color: "rgba(45,49,72,0.5)" }, ticks: { color: "#6b7194", font: { size: 10 } }, title: { display: true, text: "°C", color: "#6b7194" } },
+      },
+    },
+  });
+}
+
+window.openLidarUpload = function (courseId) {
+  let modal = document.getElementById("lidarUploadModal");
+  if (modal) modal.remove();
+
+  modal = document.createElement("div");
+  modal.id = "lidarUploadModal";
+  modal.className = "modal active";
+  modal.style.cssText = "z-index:9999;background:rgba(0,0,0,0.6)";
+  modal.innerHTML = `
+    <div class="modal-content" style="width:480px;max-width:90vw;z-index:10000">
+      <div class="modal-header">
+        <h3>드론 LiDAR 데이터 업로드</h3>
+        <button class="btn-icon" onclick="this.closest('.modal').remove()">&times;</button>
+      </div>
+      <div style="padding:20px">
+        <div id="lidarDropZone" style="border:2px dashed var(--border-color);border-radius:10px;padding:30px;text-align:center;cursor:pointer">
+          <span class="material-icons-outlined" style="font-size:40px;color:var(--text-muted);display:block;margin-bottom:8px">terrain</span>
+          <div style="font-size:13px;font-weight:600">DSM/DTM/CHM 파일을 드래그하세요</div>
+          <div style="font-size:11px;color:var(--text-muted)">GeoTIFF, TIFF (최대 5GB)</div>
+          <input type="file" id="lidarFileInput" accept=".tif,.tiff,.las,.laz" style="display:none">
+        </div>
+        <div class="form-group" style="margin-top:12px"><label>이름</label><input type="text" id="lidarName" class="edit-input" placeholder="예: 2026년 6월 DSM"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <div class="form-group" style="flex:1"><label>유형</label>
+            <select id="lidarType" class="edit-input"><option value="dsm">DSM (수치표면모델)</option><option value="dtm">DTM (수치지형모델)</option><option value="chm">CHM (수관높이모델)</option><option value="point_cloud">포인트 클라우드</option></select>
+          </div>
+          <div class="form-group" style="flex:1"><label>날짜</label><input type="date" id="lidarDate" class="edit-input" value="${new Date().toISOString().split("T")[0]}"></div>
+        </div>
+        <div class="form-group" style="margin-top:8px"><label>GSD (cm)</label><input type="text" id="lidarGSD" class="edit-input" placeholder="예: 2.5"></div>
+        <div class="form-group" style="margin-top:8px"><label>설명</label><input type="text" id="lidarDesc" class="edit-input" placeholder="DJI L1, 고도 80m"></div>
+        <div id="lidarUploadPreview" style="display:none;margin-top:12px"></div>
+        <button class="btn btn-primary" style="width:100%;margin-top:12px;justify-content:center" id="lidarUploadBtn" disabled onclick="uploadLidarData(${courseId})">업로드</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const dropZone = document.getElementById("lidarDropZone");
+  const fileInput = document.getElementById("lidarFileInput");
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.style.borderColor = "var(--accent-green)"; });
+  dropZone.addEventListener("dragleave", () => dropZone.style.borderColor = "var(--border-color)");
+  dropZone.addEventListener("drop", (e) => { e.preventDefault(); dropZone.style.borderColor = "var(--border-color)"; if (e.dataTransfer.files[0]) selectLidarFile(e.dataTransfer.files[0]); });
+  fileInput.addEventListener("change", (e) => { if (e.target.files[0]) selectLidarFile(e.target.files[0]); });
+};
+
+let _lidarFile = null;
+function selectLidarFile(file) {
+  _lidarFile = file;
+  document.getElementById("lidarUploadPreview").style.display = "block";
+  document.getElementById("lidarUploadPreview").innerHTML = `<div style="padding:8px;background:var(--bg-primary);border-radius:6px;font-size:12px"><span class="material-icons-outlined" style="font-size:16px;color:var(--accent-green);vertical-align:middle">check_circle</span> ${file.name} (${(file.size/1024/1024).toFixed(1)}MB)</div>`;
+  document.getElementById("lidarUploadBtn").disabled = false;
+  if (!document.getElementById("lidarName").value) document.getElementById("lidarName").value = file.name.replace(/\.[^.]+$/, "");
+}
+
+window.uploadLidarData = async function (courseId) {
+  if (!_lidarFile) return;
+  const btn = document.getElementById("lidarUploadBtn");
+  btn.disabled = true; btn.textContent = "업로드 중...";
+
+  const formData = new FormData();
+  formData.append("lidar", _lidarFile);
+  formData.append("name", document.getElementById("lidarName").value);
+  formData.append("data_type", document.getElementById("lidarType").value);
+  formData.append("date", document.getElementById("lidarDate").value);
+  formData.append("gsd", document.getElementById("lidarGSD").value);
+  formData.append("description", document.getElementById("lidarDesc").value);
+
+  try {
+    const r = await fetch(`/api/terrain/lidar/${courseId}/upload`, { method: "POST", body: formData });
+    const result = await r.json();
+    if (result.ok) {
+      showToast("LiDAR 데이터 업로드 완료");
+      document.getElementById("lidarUploadModal").remove();
+      _lidarFile = null;
+      loadTerrainAnalysis(courseId);
+    } else { btn.textContent = "업로드 실패"; btn.disabled = false; }
+  } catch (e) { btn.textContent = "오류"; btn.disabled = false; }
+};
+
+window.deleteLidarData = async function (courseId, datasetId) {
+  if (!confirm("이 LiDAR 데이터를 삭제하시겠습니까?")) return;
+  try {
+    await API.delete(`/api/terrain/lidar/${courseId}/${datasetId}`);
+    showToast("LiDAR 데이터 삭제 완료");
+    loadTerrainAnalysis(courseId);
+  } catch (e) { alert("삭제 실패"); }
+};
 
 // ============ VERSION MANAGEMENT (버전 관리) ============
 
