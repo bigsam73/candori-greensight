@@ -30,3 +30,6 @@ public/img/basemap_*
 # 드론 영상 업로드 (용량이 크므로 git 제외)
 public/uploads/drone/
 server/data/drone_images.json
+
+# 구역/온톨로지 데이터 (사용자 데이터)
+server/data/zones.json
