@@ -12,6 +12,7 @@ const alertRoutes = require("./routes/alerts");
 const droneRoutes = require("./routes/droneImages");
 const versionRoutes = require("./routes/versions");
 const zoneRoutes = require("./routes/zones");
+const terrainRoutes = require("./routes/terrain");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,6 +39,7 @@ app.use("/api/alerts", alertRoutes);
 app.use("/api/drone", droneRoutes);
 app.use("/api/versions", versionRoutes);
 app.use("/api/zones", zoneRoutes);
+app.use("/api/terrain", terrainRoutes);
 
 // Platform configuration endpoint (위성 인증 상태)
 app.get("/api/config", (req, res) => {

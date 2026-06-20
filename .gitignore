@@ -33,3 +33,7 @@ server/data/drone_images.json
 
 # 구역/온톨로지 데이터 (사용자 데이터)
 server/data/zones.json
+
+# LiDAR 업로드 데이터
+public/uploads/lidar/
+server/data/lidar_data.json
