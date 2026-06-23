@@ -612,8 +612,38 @@ function addTileLayers(map, type = "dark") {
     { maxZoom: 21, attribution: "Google Terrain" }
   );
 
+  // VWorld (국토교통부 공식 무료 한국지도)
+  const vworldBase = L.tileLayer(
+    "https://xdworld.vworld.kr/2d/Base/service/{z}/{x}/{y}.png",
+    { maxZoom: 19, attribution: "VWorld 국토교통부" }
+  );
+  const vworldSat = L.tileLayer(
+    "https://xdworld.vworld.kr/2d/Satellite/service/{z}/{x}/{y}.jpeg",
+    { maxZoom: 19, attribution: "VWorld 위성" }
+  );
+  const vworldHybrid = L.layerGroup([
+    L.tileLayer("https://xdworld.vworld.kr/2d/Satellite/service/{z}/{x}/{y}.jpeg", { maxZoom: 19 }),
+    L.tileLayer("https://xdworld.vworld.kr/2d/Hybrid/service/{z}/{x}/{y}.png", { maxZoom: 19 }),
+  ]);
+  const vworldMidnight = L.tileLayer(
+    "https://xdworld.vworld.kr/2d/midnight/service/{z}/{x}/{y}.png",
+    { maxZoom: 19, attribution: "VWorld 다크" }
+  );
+
+  // 카카오맵 위성 (좌표 변환 포함)
+  const kakaoSat = L.tileLayer(
+    "https://map{s}.daumcdn.net/map_skyview/L{z}/{y}/{x}.jpg",
+    {
+      maxZoom: 14, minZoom: 1, attribution: "Kakao",
+      subdomains: "0123",
+      tms: true,
+      // 카카오 줌레벨 변환: Leaflet z → Kakao level
+      zoomOffset: 0,
+    }
+  );
+
   dark.addTo(map);
-  map._layers_custom = { dark, satellite, esriClarity, esriLabels, osm, googleRoad, googleSat, googleHybrid, googleTerrain };
+  map._layers_custom = { dark, satellite, esriClarity, esriLabels, osm, googleRoad, googleSat, googleHybrid, googleTerrain, vworldBase, vworldSat, vworldHybrid, vworldMidnight, kakaoSat };
 
   // Planet Basemaps를 비동기로 로드 (API Key가 있을 때만)
   loadPlanetBasemapLayer(map);
@@ -720,6 +750,21 @@ function switchMapLayer(map, layerType) {
       break;
     case "google-terrain":
       layers.googleTerrain.addTo(map);
+      break;
+    case "vworld-base":
+      layers.vworldBase.addTo(map);
+      break;
+    case "vworld-sat":
+      layers.vworldSat.addTo(map);
+      break;
+    case "vworld-hybrid":
+      layers.vworldHybrid.addTo(map);
+      break;
+    case "vworld-dark":
+      layers.vworldMidnight.addTo(map);
+      break;
+    case "kakao-sat":
+      layers.kakaoSat.addTo(map);
       break;
     default:
       layers.dark.addTo(map);
@@ -2126,10 +2171,13 @@ async function loadAnalysis(courseId) {
             <select id="ndviMapBgSelect" class="select-sm" onchange="changeNdviMapBackground(this.value)">
               <option value="esri-clarity">ESRI Clarity (0.3m)</option>
               <option value="google-hybrid" selected>Google 하이브리드</option>
+              <option value="vworld-sat">VWorld 위성 (국토부)</option>
               <option value="google-sat">Google 위성</option>
               <option value="esri">ESRI 위성</option>
+              <option value="vworld-base">VWorld 일반 (국토부)</option>
               <option value="osm">OpenStreetMap</option>
               <option value="dark">다크 모드</option>
+              <option value="vworld-dark">VWorld 다크 (국토부)</option>
             </select>
             <div style="width:1px;height:18px;background:var(--border-color)"></div>
             <div id="ndviMapSatTabs" style="display:flex;gap:4px"></div>
@@ -2327,6 +2375,9 @@ const BG_TILE_URLS = {
   "esri": { url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", maxZoom: 19, attr: "ESRI" },
   "osm": { url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", maxZoom: 19, attr: "OSM" },
   "dark": { url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", maxZoom: 19, attr: "CartoDB" },
+  "vworld-base": { url: "https://xdworld.vworld.kr/2d/Base/service/{z}/{x}/{y}.png", maxZoom: 19, attr: "VWorld" },
+  "vworld-sat": { url: "https://xdworld.vworld.kr/2d/Satellite/service/{z}/{x}/{y}.jpeg", maxZoom: 19, attr: "VWorld" },
+  "vworld-dark": { url: "https://xdworld.vworld.kr/2d/midnight/service/{z}/{x}/{y}.png", maxZoom: 19, attr: "VWorld Dark" },
 };
 
 function createBgTileLayer(type) {

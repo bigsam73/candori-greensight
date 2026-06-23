@@ -170,8 +170,11 @@
                 <option value="dark">다크 모드</option>
                 <option value="esri-clarity">ESRI Clarity (0.3m)</option>
                 <option value="google-hybrid">Google 하이브리드</option>
+                <option value="vworld-hybrid">VWorld 하이브리드 (국토부)</option>
+                <option value="vworld-sat">VWorld 위성 (국토부)</option>
+                <option value="kakao-sat">카카오 위성</option>
                 <option value="google-sat">Google 위성</option>
-                <option value="satellite">ESRI 위성</option>
+                <option value="vworld-base">VWorld 일반 (국토부)</option>
                 <option value="osm">OpenStreetMap</option>
               </select>
             </div>
@@ -244,15 +247,25 @@
           <div class="toolbar-group">
             <label>배경:</label>
             <select id="fullMapLayer" class="select-sm">
-              <option value="esri-clarity">ESRI Clarity (0.3m 최고해상도)</option>
-              <option value="google-hybrid">Google 하이브리드</option>
-              <option value="google-sat">Google 위성</option>
-              <option value="satellite">ESRI 위성</option>
-              <option value="esri-clarity-nolabel">ESRI Clarity (라벨 없음)</option>
-              <option value="google-road">Google 일반</option>
-              <option value="google-terrain">Google 지형</option>
-              <option value="osm">OpenStreetMap</option>
-              <option value="dark">다크 모드</option>
+              <optgroup label="고해상도 위성">
+                <option value="esri-clarity">ESRI Clarity (0.3m)</option>
+                <option value="google-hybrid">Google 하이브리드</option>
+                <option value="google-sat">Google 위성</option>
+                <option value="satellite">ESRI 위성</option>
+                <option value="vworld-hybrid">VWorld 하이브리드 (국토부)</option>
+                <option value="vworld-sat">VWorld 위성 (국토부)</option>
+                <option value="kakao-sat">카카오 위성</option>
+              </optgroup>
+              <optgroup label="일반 지도">
+                <option value="vworld-base">VWorld 일반 (국토부)</option>
+                <option value="google-road">Google 일반</option>
+                <option value="google-terrain">Google 지형</option>
+                <option value="osm">OpenStreetMap</option>
+              </optgroup>
+              <optgroup label="다크 모드">
+                <option value="dark">CartoDB 다크</option>
+                <option value="vworld-dark">VWorld 다크 (국토부)</option>
+              </optgroup>
             </select>
           </div>
           <div class="toolbar-divider"></div>
