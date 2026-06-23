@@ -1055,6 +1055,10 @@ function showSelectedDateDetail(course, record) {
       <button class="vi-btn" style="flex:1;--vi-color:#60a5fa" onclick="requestPlanetImage('${course.id}','${record.date}','rgb')">Planet RGB</button>
       <button class="vi-btn" style="flex:1;--vi-color:#a78bfa" onclick="showIndexOverlay('${course.id}','${record.date}','sar_moisture',${record.ndvi_mean})">SAR 수분</button>
     </div>
+    <div style="display:flex;gap:4px;margin-top:4px">
+      <button class="vi-btn" style="flex:1;--vi-color:#22c55e" onclick="showIndexOverlay('${course.id}','${record.date}','rfdi',${record.ndvi_mean})">PALSAR 산림</button>
+      <button class="vi-btn" style="flex:1;--vi-color:#15803d" onclick="showIndexOverlay('${course.id}','${record.date}','palsar_biomass',${record.ndvi_mean})">바이오매스</button>
+    </div>
     <div id="overlayStatus" style="margin-top:6px;font-size:10px;color:var(--text-muted)"></div>
   `;
 
@@ -1341,6 +1345,8 @@ const VI_META = {
   cire:   { name: "CIre",   full: "Chlorophyll Index Red Edge",            color: "#4ade80", unit: "", range: [0, 5],    good: 1.5, desc: "엽록소 함량 / 시비 효과" },
   gli:    { name: "GLI",    full: "Green Leaf Index",                      color: "#86efac", unit: "", range: [-0.3, 0.5], good: 0.1, desc: "잔디 녹색도 (RGB 기반)" },
   sar_moisture: { name: "SAR 수분", full: "Sentinel-1 SAR Soil Moisture", color: "#a78bfa", unit: "", range: [0, 1], good: 0.5, desc: "구름 무관 토양수분 (C-band 후방산란)" },
+  rfdi:    { name: "RFDI",   full: "Radar Forest Degradation Index (PALSAR)", color: "#22c55e", unit: "", range: [0, 1], good: 0.3, desc: "L-band 산림 밀도/훼손 (코스 주변 수목)" },
+  palsar_biomass: { name: "바이오매스", full: "PALSAR Biomass (L-band)", color: "#15803d", unit: "t/ha", range: [0, 300], good: 100, desc: "수목 바이오매스/탄소 (그림자 영향 수목)" },
 };
 
 window.showIndexOverlay = function (courseId, date, indexId, ndviMean) {
@@ -1376,6 +1382,8 @@ window.showIndexOverlay = function (courseId, date, indexId, ndviMean) {
       case "cire":   value = value * 3.5; break;
       case "gli":    value = value * 0.5 - 0.1; break;
       case "sar_moisture": value = 0.3 + value * 0.5 + (Math.random() - 0.5) * 0.15; break;
+      case "rfdi":   value = 0.15 + (1 - value) * 0.6 + (Math.random() - 0.5) * 0.1; break;
+      case "palsar_biomass": value = 50 + value * 200 + (Math.random() - 0.5) * 40; break;
     }
 
     const norm = (value - meta.range[0]) / (meta.range[1] - meta.range[0]);

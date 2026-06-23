@@ -242,6 +242,28 @@ const SATELLITE_CATALOG = [
     enabled: true,
     tier: "basic",
   },
+  // ===== PALSAR (L-band SAR) =====
+  {
+    id: "palsar",
+    name: "ALOS-2 PALSAR-2 (L-band)",
+    provider: "JAXA (일본우주항공연구개발기구)",
+    resolution: "3~10m",
+    resolution_m: 10,
+    revisit: "14일",
+    bands_nir: "HH, HV (L-band 편파)",
+    bands_red: "-",
+    ndvi_formula: "HH/HV 비율 → 산림 밀도 추정",
+    coverage: "전 세계",
+    cost: "과거 데이터 무료 (ASF DAAC) / 신규 주문 유료",
+    api_url: "https://search.asf.alaska.edu/",
+    auth: "NASA Earthdata Login (무료)",
+    env_key: "EARTHDATA_LOGIN",
+    data_format: "GeoTIFF (CEOS)",
+    pros: "L-band(23.6cm)는 식생 관통 → 토양/수목 구조 분석. 산림 밀도/변화 감지 최적. 심층 토양수분 추정",
+    cons: "잔디(1~5cm)에는 파장이 너무 긴 편. API 실시간 접근 제한. 주로 산림/수목 분석용",
+    enabled: true,
+    tier: "standard",
+  },
   // ===== SAR =====
   {
     id: "sentinel-1",
@@ -624,6 +646,25 @@ const VEGETATION_INDICES = [
     range: "-0.3 ~ 0.5 (0.1 이상 녹색)",
     evalscript: "SENTINEL2_GLI",
     color: "#86efac",
+  },
+  // PALSAR 기반 지수
+  {
+    id: "rfdi", name: "RFDI", fullName: "Radar Forest Degradation Index",
+    formula: "(HH - HV) / (HH + HV)", bands: "PALSAR HH + HV",
+    description: "L-band SAR로 산림 밀도/훼손 감지. 코스 주변 수목 관리",
+    golf_use: "코스 주변 산림 밀도 변화, 수목 벌채/식재 모니터링",
+    range: "0.0 ~ 1.0 (0.3 이하: 밀림, 0.7 이상: 나지)",
+    evalscript: "PALSAR_RFDI",
+    color: "#22c55e",
+  },
+  {
+    id: "palsar_biomass", name: "바이오매스", fullName: "PALSAR Biomass Estimation",
+    formula: "HV 후방산란 → 바이오매스 추정", bands: "PALSAR HV",
+    description: "L-band HV 편파로 수목 바이오매스/탄소량 추정",
+    golf_use: "코스 주변 수목 건강도, 그림자 영향 수목 관리",
+    range: "0 ~ 300 ton/ha",
+    evalscript: "PALSAR_BIOMASS",
+    color: "#15803d",
   },
 ];
 
