@@ -913,11 +913,22 @@ async function loadAvailableDates(courseId) {
     const dates = await API.get(url);
 
     if (dates.length === 0) {
+      // 90일에 없으면 365일로 재시도
+      let extendedDates = [];
+      try {
+        extendedDates = await API.get(`/api/ndvi/available-dates/${courseId}?days=365`);
+      } catch (_) {}
+
       content.innerHTML = `
         <div style="text-align:center;padding:16px 0;color:var(--text-muted)">
           <span class="material-icons-outlined" style="font-size:32px;display:block;margin-bottom:6px">event_busy</span>
-          <div style="font-size:12px">최근 90일간 데이터가 없습니다</div>
-          <div style="font-size:11px;margin-top:4px">위성 소스 필터를 변경해 보세요</div>
+          <div style="font-size:12px;color:var(--accent-orange)">최근 90일간 ${satFilter ? satFilter + " " : ""}데이터가 없습니다</div>
+          ${extendedDates.length > 0 ? `
+            <div style="font-size:11px;margin-top:4px;color:var(--accent-green)">365일 범위: ${extendedDates.length}건 존재 (최근: ${extendedDates[0]?.date})</div>
+            <button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="loadAvailableDatesExtended('${courseId}')">
+              <span class="material-icons-outlined" style="font-size:14px">expand_more</span> 365일 데이터 보기
+            </button>
+          ` : `<div style="font-size:11px;margin-top:4px">위성 소스 필터를 변경하거나, NDVI 데이터를 확인하세요</div>`}
         </div>
       `;
       return;
@@ -1848,6 +1859,26 @@ function clearMapOverlays() {
   }
 }
 
+window.loadAvailableDatesExtended = async function (courseId) {
+  const content = document.getElementById("mapInfoContent");
+  const title = document.getElementById("mapInfoTitle");
+  content.innerHTML = '<div class="loading"><div class="spinner"></div> 365일 데이터 로드 중...</div>';
+
+  try {
+    const dates = await API.get(`/api/ndvi/available-dates/${courseId}?days=365`);
+    const course = state.courses.find((c) => c.id === Number(courseId));
+    if (!course) return;
+
+    const satTypes = [...new Set(dates.map((d) => d.satellite))];
+    state._mapAvailDates = dates;
+    state._mapAvailSatTypes = satTypes;
+    state._mapAvailFilter = "all";
+    renderAvailableDatesPanel(course, dates, satTypes, "all");
+  } catch (err) {
+    content.innerHTML = '<div style="color:var(--accent-red)">데이터 로드 실패</div>';
+  }
+};
+
 // Global function for popup click → go to analysis
 window.viewCourseDetail = function (courseId) {
   state.selectedCourse = state.courses.find((c) => c.id === courseId);
@@ -2073,7 +2104,19 @@ async function loadAnalysis(courseId) {
 
     const trendLabels = { improving: "개선 중", declining: "악화 중", stable: "안정" };
 
+    // 위성 소스별 데이터 건수
+    const satCounts = {};
+    ndviData.forEach((r) => { satCounts[r.satellite] = (satCounts[r.satellite] || 0) + 1; });
+    const satSummary = Object.entries(satCounts).map(([k, v]) => `${k}: ${v}건`).join(" | ");
+
     content.innerHTML = `
+      <!-- 데이터 상태 배너 -->
+      <div style="padding:10px 14px;margin-bottom:16px;border-radius:8px;font-size:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;${ndviData.length > 0 ? "background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);color:var(--accent-green)" : "background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);color:var(--accent-red)"}">
+        <span class="material-icons-outlined" style="font-size:18px">${ndviData.length > 0 ? "check_circle" : "error"}</span>
+        <span style="font-weight:600">${ndviData.length > 0 ? `${period}일간 ${ndviData.length}건 NDVI 데이터 로드 완료` : `${period}일간 NDVI 데이터 없음`}</span>
+        ${ndviData.length > 0 ? `<span style="color:var(--text-muted);font-size:11px">| ${satSummary}</span>` : `<span style="color:var(--text-muted);font-size:11px">| 기간을 변경하거나 위성 데이터를 확인하세요</span>`}
+      </div>
+
       <!-- Stats -->
       <div class="analysis-stats-grid">
         <div class="card stat-card">
@@ -2250,7 +2293,21 @@ async function loadAnalysis(courseId) {
       console.error("Drone images load error:", droneErr);
     }
   } catch (err) {
-    content.innerHTML = `<div class="loading" style="color:var(--accent-red)">데이터 로드 실패: ${err.message || err}</div>`;
+    content.innerHTML = `
+      <div style="text-align:center;padding:40px">
+        <span class="material-icons-outlined" style="font-size:48px;color:var(--accent-red);display:block;margin-bottom:12px">error_outline</span>
+        <div style="font-size:16px;font-weight:600;color:var(--accent-red);margin-bottom:8px">데이터 로드 실패</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">${err.message || err}</div>
+        <div style="font-size:11px;color:var(--text-secondary);max-width:400px;margin:0 auto;text-align:left">
+          <div style="font-weight:600;margin-bottom:4px">확인사항:</div>
+          <div>1. 서버가 실행 중인지 확인 (http://localhost:3000/api/health)</div>
+          <div>2. 골프장 ID가 올바른지 확인</div>
+          <div>3. 브라우저 콘솔(F12)에서 상세 에러 확인</div>
+        </div>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="loadAnalysis(document.getElementById('analysisCourseSelect').value)">
+          <span class="material-icons-outlined">refresh</span> 다시 시도
+        </button>
+      </div>`;
     console.error("loadAnalysis error:", err);
   }
 }
