@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Candori GreenSight - 골프장 NDVI 모니터링 플랫폼</title>
 
+  <!-- Kakao Map SDK -->
+  <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=ceea8d5be03983df8fdeb66acc51ef20&libraries=services"></script>
+
   <!-- Leaflet Map -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -173,6 +176,7 @@
                 <option value="vworld-hybrid">VWorld 하이브리드 (국토부)</option>
                 <option value="vworld-sat">VWorld 위성 (국토부)</option>
                 <option value="kakao-sat">카카오 위성</option>
+                <option value="kakao-road">카카오 일반</option>
                 <option value="google-sat">Google 위성</option>
                 <option value="vworld-base">VWorld 일반 (국토부)</option>
                 <option value="osm">OpenStreetMap</option>
@@ -257,6 +261,7 @@
                 <option value="kakao-sat">카카오 위성</option>
               </optgroup>
               <optgroup label="일반 지도">
+                <option value="kakao-road">카카오 일반</option>
                 <option value="vworld-base">VWorld 일반 (국토부)</option>
                 <option value="google-road">Google 일반</option>
                 <option value="google-terrain">Google 지형</option>

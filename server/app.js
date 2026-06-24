@@ -58,6 +58,10 @@ app.get("/api/config", (req, res) => {
     planetNICFI: {
       configured: !!process.env.PLANET_API_KEY,
     },
+    kakaoMap: {
+      configured: !!process.env.KAKAO_MAP_JS_KEY,
+      jsKey: process.env.KAKAO_MAP_JS_KEY || "",
+    },
     copernicus: {
       wmsUrl: "https://sh.dataspace.copernicus.eu/ogc/wms/ed64bf38-575d-4fee-83d0-59bd0c6f80b3",
       configured: true,
