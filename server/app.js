@@ -23,6 +23,33 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
 
+// 카카오맵 타일 프록시 (Leaflet에서 직접 사용 가능)
+app.get("/api/tiles/kakao/:type/:z/:x/:y", async (req, res) => {
+  const { type, z, x, y } = req.params;
+  const axios = require("axios");
+  try {
+    let url;
+    if (type === "satellite") {
+      url = `https://map0.daumcdn.net/map_skyview/L${z}/${y}/${x}.jpg`;
+    } else if (type === "hybrid") {
+      url = `https://map0.daumcdn.net/map_hybrid/2403ksn/L${z}/${y}/${x}.png`;
+    } else {
+      url = `https://map0.daumcdn.net/map_2d/2403ksn/L${z}/${y}/${x}.png`;
+    }
+    const response = await axios.get(url, {
+      responseType: "arraybuffer",
+      timeout: 10000,
+      headers: { Referer: "https://map.kakao.com/" },
+    });
+    const contentType = type === "satellite" ? "image/jpeg" : "image/png";
+    res.set("Content-Type", contentType);
+    res.set("Cache-Control", "public, max-age=86400");
+    res.send(Buffer.from(response.data));
+  } catch (e) {
+    res.status(404).send("");
+  }
+});
+
 // 대용량 드론 영상 업로드 타임아웃 (5GB 지원)
 app.use((req, res, next) => {
   if (req.url.includes("/api/drone") && req.method === "POST") {

@@ -115,101 +115,99 @@ function getNDVIHealthEmoji(ndvi) {
   return "";
 }
 
-// ============ KAKAO MAP LAYER (Leaflet 동기화) ============
+// ============ KAKAO MAP (SDK 오버레이) ============
 
 function createKakaoOverlay(map, mapType) {
   removeKakaoOverlay(map);
 
   if (typeof kakao === "undefined" || !kakao.maps) {
-    console.error("카카오맵 SDK가 로드되지 않았습니다");
+    console.error("[Kakao] SDK 로드 안됨");
+    showToast("카카오맵 SDK를 로드할 수 없습니다. 다른 배경지도를 사용하세요.");
     return;
   }
 
-  const leafletContainer = map.getContainer();
-  const parentEl = leafletContainer.parentElement;
+  const leafletEl = map.getContainer();
+  const rect = leafletEl.getBoundingClientRect();
 
-  // 카카오맵 div를 Leaflet 컨테이너와 동일 위치에 절대 배치
+  // 카카오맵 div를 body에 고정 위치로 생성
   const kakaoDiv = document.createElement("div");
-  kakaoDiv.id = "kakaoMapOverlay_" + L.stamp(map);
-  kakaoDiv.style.cssText = `
-    position:absolute; top:0; left:0; width:100%; height:100%; z-index:199;
-  `;
-  parentEl.style.position = "relative";
-  parentEl.insertBefore(kakaoDiv, leafletContainer);
+  kakaoDiv.id = "kakaoOverlay";
+  kakaoDiv.style.cssText = `position:fixed;top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px;z-index:399;`;
+  document.body.appendChild(kakaoDiv);
 
-  // Leaflet 컨테이너를 카카오 위에 (투명 배경)
-  leafletContainer.style.position = "relative";
-  leafletContainer.style.zIndex = "200";
-  leafletContainer.style.background = "transparent";
+  // Leaflet 컨테이너를 위로 (마커/폴리곤 표시용)
+  leafletEl.style.zIndex = "400";
+  leafletEl.style.position = "relative";
 
-  // Leaflet 타일 레이어 숨기기
-  const tilePane = leafletContainer.querySelector(".leaflet-tile-pane");
-  if (tilePane) tilePane.style.display = "none";
+  // Leaflet 배경 타일 숨기기
+  const tilePane = leafletEl.querySelector(".leaflet-tile-pane");
+  if (tilePane) tilePane.style.opacity = "0";
+  leafletEl.style.background = "transparent";
 
   try {
     const center = map.getCenter();
+    const level = Math.max(1, Math.min(14, 15 - map.getZoom()));
+    const kakaoMapType = mapType === "kakao-satellite" ? kakao.maps.MapTypeId.HYBRID : kakao.maps.MapTypeId.ROADMAP;
+
     const kakaoMap = new kakao.maps.Map(kakaoDiv, {
       center: new kakao.maps.LatLng(center.lat, center.lng),
-      level: leafletZoomToKakaoLevel(map.getZoom()),
+      level: level,
+      mapTypeId: kakaoMapType,
       draggable: false,
       scrollwheel: false,
       disableDoubleClickZoom: true,
-      keyboardShortcuts: false,
     });
 
-    // 지도 타입 설정
-    if (mapType === "kakao-satellite") {
-      kakaoMap.setMapTypeId(kakao.maps.MapTypeId.HYBRID);
-    }
+    map._kakao = { div: kakaoDiv, map: kakaoMap, tilePane };
 
-    map._kakaoOverlay = { div: kakaoDiv, map: kakaoMap, tilePane };
-
-    function syncKakao() {
+    // Leaflet 이벤트 → 카카오 동기화
+    function sync() {
       const c = map.getCenter();
+      const z = Math.max(1, Math.min(14, 15 - map.getZoom()));
       kakaoMap.setCenter(new kakao.maps.LatLng(c.lat, c.lng));
-      kakaoMap.setLevel(leafletZoomToKakaoLevel(map.getZoom()));
+      kakaoMap.setLevel(z);
     }
 
-    map.on("move", syncKakao);
-    map.on("zoom", syncKakao);
-    map._kakaoOverlay._syncFn = syncKakao;
-
-    // 초기 크기 맞춤
-    setTimeout(() => {
+    // 카카오 div 위치도 동기화 (스크롤/리사이즈)
+    function syncPosition() {
+      const r = leafletEl.getBoundingClientRect();
+      kakaoDiv.style.top = r.top + "px";
+      kakaoDiv.style.left = r.left + "px";
+      kakaoDiv.style.width = r.width + "px";
+      kakaoDiv.style.height = r.height + "px";
       kakaoMap.relayout();
-      syncKakao();
-    }, 200);
+      sync();
+    }
 
-    console.log("[Kakao] 카카오맵 오버레이 생성 완료:", mapType);
+    map.on("move", sync);
+    map.on("zoom", sync);
+    map.on("resize", syncPosition);
+    window.addEventListener("resize", syncPosition);
+    map._kakao._sync = sync;
+    map._kakao._syncPos = syncPosition;
+
+    setTimeout(() => { kakaoMap.relayout(); sync(); }, 300);
+    console.log("[Kakao] 오버레이 생성:", mapType);
 
   } catch (e) {
-    console.error("카카오맵 생성 실패:", e);
+    console.error("[Kakao] 생성 실패:", e);
     kakaoDiv.remove();
-    // Leaflet 타일 복원
-    if (tilePane) tilePane.style.display = "";
-    leafletContainer.style.background = "";
+    if (tilePane) tilePane.style.opacity = "";
+    leafletEl.style.background = "";
   }
 }
 
 function removeKakaoOverlay(map) {
-  if (map._kakaoOverlay) {
-    if (map._kakaoOverlay._syncFn) {
-      map.off("move", map._kakaoOverlay._syncFn);
-      map.off("zoom", map._kakaoOverlay._syncFn);
-    }
-    map._kakaoOverlay.div?.remove();
-    // Leaflet 타일 복원
-    if (map._kakaoOverlay.tilePane) {
-      map._kakaoOverlay.tilePane.style.display = "";
-    }
-    const leafletContainer = map.getContainer();
-    leafletContainer.style.background = "";
-    map._kakaoOverlay = null;
+  if (map._kakao) {
+    map.off("move", map._kakao._sync);
+    map.off("zoom", map._kakao._sync);
+    map.off("resize", map._kakao._syncPos);
+    window.removeEventListener("resize", map._kakao._syncPos);
+    map._kakao.div?.remove();
+    if (map._kakao.tilePane) map._kakao.tilePane.style.opacity = "";
+    map.getContainer().style.background = "";
+    map._kakao = null;
   }
-}
-
-function leafletZoomToKakaoLevel(zoom) {
-  return Math.max(1, Math.min(14, 15 - zoom));
 }
 
 // ============ BOUNDARY PARSER (단일/다중 폴리곤 호환) ============
@@ -727,20 +725,10 @@ function addTileLayers(map, type = "dark") {
     { maxZoom: 19, attribution: "VWorld 다크" }
   );
 
-  // 카카오맵 위성 (좌표 변환 포함)
-  const kakaoSat = L.tileLayer(
-    "https://map{s}.daumcdn.net/map_skyview/L{z}/{y}/{x}.jpg",
-    {
-      maxZoom: 14, minZoom: 1, attribution: "Kakao",
-      subdomains: "0123",
-      tms: true,
-      // 카카오 줌레벨 변환: Leaflet z → Kakao level
-      zoomOffset: 0,
-    }
-  );
+  // 카카오맵은 SDK 오버레이 방식 (addTileLayers에서는 플레이스홀더만)
 
   dark.addTo(map);
-  map._layers_custom = { dark, satellite, esriClarity, esriLabels, osm, googleRoad, googleSat, googleHybrid, googleTerrain, vworldBase, vworldSat, vworldHybrid, vworldMidnight, kakaoSat };
+  map._layers_custom = { dark, satellite, esriClarity, esriLabels, osm, googleRoad, googleSat, googleHybrid, googleTerrain, vworldBase, vworldSat, vworldHybrid, vworldMidnight };
 
   // Planet Basemaps를 비동기로 로드 (API Key가 있을 때만)
   loadPlanetBasemapLayer(map);
@@ -819,7 +807,7 @@ function switchMapLayer(map, layerType) {
     layers._activePlanet = null;
   }
 
-  // 카카오 오버레이 제거 (다른 레이어로 전환 시)
+  // 카카오 오버레이 제거
   removeKakaoOverlay(map);
 
   // Remove labels overlay if present
@@ -864,10 +852,11 @@ function switchMapLayer(map, layerType) {
       layers.vworldMidnight.addTo(map);
       break;
     case "kakao-road":
-      layers.dark.addTo(map); // 배경용 (카카오가 위에 오버레이)
+      layers.dark.addTo(map);
       createKakaoOverlay(map, "kakao-road");
       break;
     case "kakao-sat":
+    case "kakao-hybrid":
       layers.dark.addTo(map);
       createKakaoOverlay(map, "kakao-satellite");
       break;
