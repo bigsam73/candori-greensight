@@ -118,54 +118,76 @@ function getNDVIHealthEmoji(ndvi) {
 // ============ KAKAO MAP LAYER (Leaflet 동기화) ============
 
 function createKakaoOverlay(map, mapType) {
-  // 기존 카카오 오버레이 제거
   removeKakaoOverlay(map);
 
-  // 카카오맵 컨테이너 생성
-  const mapContainer = map.getContainer();
+  if (typeof kakao === "undefined" || !kakao.maps) {
+    console.error("카카오맵 SDK가 로드되지 않았습니다");
+    return;
+  }
+
+  const leafletContainer = map.getContainer();
+  const parentEl = leafletContainer.parentElement;
+
+  // 카카오맵 div를 Leaflet 컨테이너와 동일 위치에 절대 배치
   const kakaoDiv = document.createElement("div");
   kakaoDiv.id = "kakaoMapOverlay_" + L.stamp(map);
-  kakaoDiv.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;z-index:200;pointer-events:none;";
-  mapContainer.style.position = "relative";
-  mapContainer.appendChild(kakaoDiv);
+  kakaoDiv.style.cssText = `
+    position:absolute; top:0; left:0; width:100%; height:100%; z-index:199;
+  `;
+  parentEl.style.position = "relative";
+  parentEl.insertBefore(kakaoDiv, leafletContainer);
+
+  // Leaflet 컨테이너를 카카오 위에 (투명 배경)
+  leafletContainer.style.position = "relative";
+  leafletContainer.style.zIndex = "200";
+  leafletContainer.style.background = "transparent";
+
+  // Leaflet 타일 레이어 숨기기
+  const tilePane = leafletContainer.querySelector(".leaflet-tile-pane");
+  if (tilePane) tilePane.style.display = "none";
 
   try {
-    // 카카오맵 생성
     const center = map.getCenter();
-    const kakaoCenter = new kakao.maps.LatLng(center.lat, center.lng);
     const kakaoMap = new kakao.maps.Map(kakaoDiv, {
-      center: kakaoCenter,
+      center: new kakao.maps.LatLng(center.lat, center.lng),
       level: leafletZoomToKakaoLevel(map.getZoom()),
-      mapTypeId: mapType === "kakao-satellite" ? kakao.maps.MapTypeId.HYBRID :
-                 mapType === "kakao-terrain" ? kakao.maps.MapTypeId.HYBRID :
-                 kakao.maps.MapTypeId.ROADMAP,
       draggable: false,
       scrollwheel: false,
       disableDoubleClickZoom: true,
       keyboardShortcuts: false,
     });
 
-    // Leaflet 위성 타일은 카카오가 위에 오므로 숨김 (다크 배경만 유지)
-    map._kakaoOverlay = { div: kakaoDiv, map: kakaoMap };
+    // 지도 타입 설정
+    if (mapType === "kakao-satellite") {
+      kakaoMap.setMapTypeId(kakao.maps.MapTypeId.HYBRID);
+    }
 
-    // Leaflet 이동/줌 동기화
+    map._kakaoOverlay = { div: kakaoDiv, map: kakaoMap, tilePane };
+
     function syncKakao() {
       const c = map.getCenter();
-      const z = map.getZoom();
       kakaoMap.setCenter(new kakao.maps.LatLng(c.lat, c.lng));
-      kakaoMap.setLevel(leafletZoomToKakaoLevel(z));
+      kakaoMap.setLevel(leafletZoomToKakaoLevel(map.getZoom()));
     }
 
     map.on("move", syncKakao);
     map.on("zoom", syncKakao);
     map._kakaoOverlay._syncFn = syncKakao;
 
-    // 카카오맵 위에서 마우스 이벤트가 Leaflet으로 전달되도록
-    kakaoDiv.style.pointerEvents = "none";
+    // 초기 크기 맞춤
+    setTimeout(() => {
+      kakaoMap.relayout();
+      syncKakao();
+    }, 200);
+
+    console.log("[Kakao] 카카오맵 오버레이 생성 완료:", mapType);
 
   } catch (e) {
     console.error("카카오맵 생성 실패:", e);
     kakaoDiv.remove();
+    // Leaflet 타일 복원
+    if (tilePane) tilePane.style.display = "";
+    leafletContainer.style.background = "";
   }
 }
 
@@ -176,12 +198,17 @@ function removeKakaoOverlay(map) {
       map.off("zoom", map._kakaoOverlay._syncFn);
     }
     map._kakaoOverlay.div?.remove();
+    // Leaflet 타일 복원
+    if (map._kakaoOverlay.tilePane) {
+      map._kakaoOverlay.tilePane.style.display = "";
+    }
+    const leafletContainer = map.getContainer();
+    leafletContainer.style.background = "";
     map._kakaoOverlay = null;
   }
 }
 
 function leafletZoomToKakaoLevel(zoom) {
-  // Leaflet zoom (0~20) → Kakao level (1~14, 작을수록 확대)
   return Math.max(1, Math.min(14, 15 - zoom));
 }
 

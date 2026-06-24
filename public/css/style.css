@@ -1314,6 +1314,16 @@ body {
 }
 .edit-location-window:hover .resize-grip { opacity: 0.8; }
 
+/* ============ KAKAO MAP OVERLAY ============ */
+[id^="kakaoMapOverlay"] {
+  background: #f0f0f0;
+}
+
+/* Leaflet 투명 배경 (카카오맵 보이도록) */
+.leaflet-container[style*="background: transparent"] .leaflet-tile-pane {
+  display: none;
+}
+
 /* ============ POLYGON LABELS ============ */
 .poly-label {
   background: rgba(30, 33, 48, 0.85) !important;
