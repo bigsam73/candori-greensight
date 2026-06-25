@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Candori GreenSight - Golf Course NDVI Monitoring Platform
  * Main Application JavaScript
  */
@@ -177,7 +177,11 @@ function createKakaoOverlay(map, mapType) {
       map.setView([c.getLat(), c.getLng()], 15 - kakaoMap.getLevel(), { animate: false });
     });
 
-    setTimeout(() => kakaoMap.relayout(), 300);
+    setTimeout(() => {
+      kakaoMap.relayout();
+      // 골프장 영역 폴리곤 + 마커 표시
+      drawKakaoCourseOverlays(kakaoMap);
+    }, 500);
     console.log("[Kakao] 오버레이 생성:", mapType);
 
   } catch (e) {
@@ -186,6 +190,94 @@ function createKakaoOverlay(map, mapType) {
     leafletEl.style.display = "";
   }
 }
+
+function drawKakaoCourseOverlays(kakaoMap) {
+  if (!state.courses || !kakaoMap) return;
+
+  const COLORS = ["#4ade80","#60a5fa","#fb923c","#a78bfa","#f87171","#2dd4bf","#fbbf24","#e879f9"];
+
+  state.courses.forEach((c, ci) => {
+    const color = COLORS[ci % COLORS.length];
+    const boundaries = parseBoundary(c.boundary);
+
+    // 각 코스 영역 폴리곤
+    boundaries.forEach((poly) => {
+      if (!poly.coords || poly.coords.length < 3) return;
+      const path = poly.coords.map((p) => new kakao.maps.LatLng(p[0], p[1]));
+
+      const polygon = new kakao.maps.Polygon({
+        path: path,
+        strokeWeight: 2,
+        strokeColor: color,
+        strokeOpacity: 0.9,
+        strokeStyle: "shortdash",
+        fillColor: color,
+        fillOpacity: 0.15,
+      });
+      polygon.setMap(kakaoMap);
+    });
+
+    // 골프장 중심 마커
+    const markerPos = new kakao.maps.LatLng(c.lat, c.lng);
+
+    // NDVI 색상
+    const ndvi = c.latest_ndvi;
+    const ndviColor = getNDVIColor(ndvi);
+    const ndviText = ndvi ? ndvi.toFixed(3) : "--";
+
+    // 커스텀 오버레이 (이름 + NDVI)
+    const content = `<div style="
+      background:rgba(30,33,48,0.9);
+      color:#fff;
+      padding:3px 8px;
+      border-radius:6px;
+      font-size:11px;
+      font-family:Inter,sans-serif;
+      border:1px solid ${color};
+      white-space:nowrap;
+      pointer-events:auto;
+      cursor:pointer;
+    " onclick="window._kakaoSelectCourse && window._kakaoSelectCourse(${c.id})">
+      <span style="font-weight:600">${c.name}</span>
+      <span style="color:${ndviColor};font-weight:700;margin-left:4px">${ndviText}</span>
+    </div>`;
+
+    const customOverlay = new kakao.maps.CustomOverlay({
+      position: markerPos,
+      content: content,
+      yAnchor: 1.3,
+    });
+    customOverlay.setMap(kakaoMap);
+
+    // 마커 원형
+    const circle = new kakao.maps.Circle({
+      center: markerPos,
+      radius: 30,
+      strokeWeight: 2,
+      strokeColor: "#fff",
+      strokeOpacity: 0.9,
+      fillColor: ndviColor,
+      fillOpacity: 0.8,
+    });
+    circle.setMap(kakaoMap);
+  });
+
+  console.log("[Kakao] 골프장", state.courses.length, "개 영역 표시 완료");
+}
+
+// 카카오맵에서 골프장 선택 시
+window._kakaoSelectCourse = function (courseId) {
+  const select = document.getElementById("mapCourseSelect");
+  if (select) select.value = courseId;
+  state.selectedCourse = state.courses.find((c) => c.id === Number(courseId));
+  if (state.selectedCourse && state.fullMap?._kakao?.map) {
+    state.fullMap._kakao.map.setCenter(
+      new kakao.maps.LatLng(state.selectedCourse.lat, state.selectedCourse.lng)
+    );
+    state.fullMap._kakao.map.setLevel(3);
+  }
+  loadAvailableDates(courseId);
+};
 
 function removeKakaoOverlay(map) {
   if (map._kakao) {
