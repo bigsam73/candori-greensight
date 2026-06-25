@@ -177,15 +177,20 @@ function createKakaoOverlay(map, mapType) {
 
     map._kakao = { div: kakaoDiv, map: kakaoMap, tilePane };
 
-    // Leaflet 이벤트 → 카카오 동기화
+    // Leaflet → 카카오 동기화 (디바운스 + 정수 줌만)
+    let syncTimer = null;
     function sync() {
-      const c = map.getCenter();
-      const z = Math.max(1, Math.min(14, 15 - map.getZoom()));
-      kakaoMap.setCenter(new kakao.maps.LatLng(c.lat, c.lng));
-      kakaoMap.setLevel(z);
+      if (syncTimer) return;
+      syncTimer = setTimeout(() => {
+        syncTimer = null;
+        const c = map.getCenter();
+        const leafletZoom = Math.round(map.getZoom()); // 정수만
+        const kakaoLevel = Math.max(1, Math.min(14, 15 - leafletZoom));
+        kakaoMap.setCenter(new kakao.maps.LatLng(c.lat, c.lng));
+        kakaoMap.setLevel(kakaoLevel);
+      }, 50);
     }
 
-    // 카카오 div 위치도 동기화 (스크롤/리사이즈)
     function syncPosition() {
       const r = leafletEl.getBoundingClientRect();
       kakaoDiv.style.top = r.top + "px";
@@ -196,8 +201,8 @@ function createKakaoOverlay(map, mapType) {
       sync();
     }
 
-    map.on("move", sync);
-    map.on("zoom", sync);
+    map.on("moveend", sync);
+    map.on("zoomend", sync);
     map.on("resize", syncPosition);
     window.addEventListener("resize", syncPosition);
     map._kakao._sync = sync;
@@ -216,8 +221,8 @@ function createKakaoOverlay(map, mapType) {
 
 function removeKakaoOverlay(map) {
   if (map._kakao) {
-    map.off("move", map._kakao._sync);
-    map.off("zoom", map._kakao._sync);
+    map.off("moveend", map._kakao._sync);
+    map.off("zoomend", map._kakao._sync);
     map.off("resize", map._kakao._syncPos);
     window.removeEventListener("resize", map._kakao._syncPos);
     map._kakao.div?.remove();
