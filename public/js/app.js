@@ -120,19 +120,28 @@ function getNDVIHealthEmoji(ndvi) {
 function createKakaoOverlay(map, mapType) {
   removeKakaoOverlay(map);
 
-  if (typeof kakao === "undefined" || !kakao.maps || !kakao.maps.Map) {
-    console.error("[Kakao] SDK 로드 안됨 - 재시도");
-    // SDK가 아직 로드 중일 수 있으므로 재시도
+  // SDK 로드 대기
+  if (!window._kakaoReady) {
     if (typeof kakao !== "undefined" && kakao.maps && kakao.maps.load) {
       kakao.maps.load(function () {
-        console.log("[Kakao] SDK 지연 로드 완료");
+        window._kakaoReady = true;
         createKakaoOverlay(map, mapType);
       });
       return;
     }
-    showToast("카카오맵 SDK를 로드할 수 없습니다. 페이지를 새로고침하세요.");
+    // 아직 로딩 중이면 500ms 후 재시도 (최대 3회)
+    if (!map._kakaoRetry) map._kakaoRetry = 0;
+    if (map._kakaoRetry < 3) {
+      map._kakaoRetry++;
+      console.log("[Kakao] SDK 로딩 대기 중... (" + map._kakaoRetry + "/3)");
+      setTimeout(() => createKakaoOverlay(map, mapType), 500);
+      return;
+    }
+    map._kakaoRetry = 0;
+    showToast("카카오맵을 로드할 수 없습니다. 네트워크를 확인하세요.");
     return;
   }
+  map._kakaoRetry = 0;
 
   const leafletEl = map.getContainer();
   const rect = leafletEl.getBoundingClientRect();
