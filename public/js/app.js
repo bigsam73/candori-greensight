@@ -120,9 +120,17 @@ function getNDVIHealthEmoji(ndvi) {
 function createKakaoOverlay(map, mapType) {
   removeKakaoOverlay(map);
 
-  if (typeof kakao === "undefined" || !kakao.maps) {
-    console.error("[Kakao] SDK 로드 안됨");
-    showToast("카카오맵 SDK를 로드할 수 없습니다. 다른 배경지도를 사용하세요.");
+  if (typeof kakao === "undefined" || !kakao.maps || !kakao.maps.Map) {
+    console.error("[Kakao] SDK 로드 안됨 - 재시도");
+    // SDK가 아직 로드 중일 수 있으므로 재시도
+    if (typeof kakao !== "undefined" && kakao.maps && kakao.maps.load) {
+      kakao.maps.load(function () {
+        console.log("[Kakao] SDK 지연 로드 완료");
+        createKakaoOverlay(map, mapType);
+      });
+      return;
+    }
+    showToast("카카오맵 SDK를 로드할 수 없습니다. 페이지를 새로고침하세요.");
     return;
   }
 

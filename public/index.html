@@ -6,7 +6,10 @@
   <title>Candori GreenSight - 골프장 NDVI 모니터링 플랫폼</title>
 
   <!-- Kakao Map SDK -->
-  <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=ceea8d5be03983df8fdeb66acc51ef20"></script>
+  <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=ceea8d5be03983df8fdeb66acc51ef20&autoload=false"></script>
+  <script>
+    kakao.maps.load(function() { console.log("[Kakao] SDK 로드 완료"); });
+  </script>
 
   <!-- Leaflet Map -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
