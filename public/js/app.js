@@ -120,7 +120,6 @@ function getNDVIHealthEmoji(ndvi) {
 function createKakaoOverlay(map, mapType) {
   removeKakaoOverlay(map);
 
-  // SDK 로드 대기
   if (!window._kakaoReady) {
     if (typeof kakao !== "undefined" && kakao.maps && kakao.maps.load) {
       kakao.maps.load(function () {
@@ -129,41 +128,42 @@ function createKakaoOverlay(map, mapType) {
       });
       return;
     }
-    // 아직 로딩 중이면 500ms 후 재시도 (최대 3회)
     if (!map._kakaoRetry) map._kakaoRetry = 0;
     if (map._kakaoRetry < 3) {
       map._kakaoRetry++;
-      console.log("[Kakao] SDK 로딩 대기 중... (" + map._kakaoRetry + "/3)");
       setTimeout(() => createKakaoOverlay(map, mapType), 500);
       return;
     }
     map._kakaoRetry = 0;
-    showToast("카카오맵을 로드할 수 없습니다. 네트워크를 확인하세요.");
+    showToast("카카오맵을 로드할 수 없습니다.");
     return;
   }
   map._kakaoRetry = 0;
 
   const leafletEl = map.getContainer();
-  const rect = leafletEl.getBoundingClientRect();
 
-  // 카카오맵 div를 body에 고정 위치로 생성
+  // 카카오맵 div를 Leaflet 컨테이너와 같은 크기로, 바로 위에 배치
   const kakaoDiv = document.createElement("div");
   kakaoDiv.id = "kakaoOverlay";
-  kakaoDiv.style.cssText = `position:fixed;top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px;z-index:399;`;
-  document.body.appendChild(kakaoDiv);
+  kakaoDiv.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;";
 
-  // Leaflet 컨테이너를 위로 (마커/폴리곤 표시용)
-  leafletEl.style.zIndex = "400";
-  leafletEl.style.position = "relative";
+  // Leaflet 컨테이너의 부모에 상대 위치 설정
+  const parent = leafletEl.parentElement;
+  parent.style.position = "relative";
 
-  // Leaflet 배경 타일 숨기기
-  const tilePane = leafletEl.querySelector(".leaflet-tile-pane");
-  if (tilePane) tilePane.style.opacity = "0";
+  // 카카오를 Leaflet 뒤에 삽입
+  parent.insertBefore(kakaoDiv, leafletEl);
+
+  // Leaflet 배경을 투명하게 (카카오가 보이도록)
   leafletEl.style.background = "transparent";
+  const tilePane = leafletEl.querySelector(".leaflet-tile-pane");
+  if (tilePane) tilePane.style.display = "none";
+  const bgPane = leafletEl.querySelector(".leaflet-map-pane");
+  if (bgPane) bgPane.style.background = "transparent";
 
   try {
     const center = map.getCenter();
-    const level = Math.max(1, Math.min(14, 15 - map.getZoom()));
+    const level = Math.max(1, Math.min(14, 15 - Math.round(map.getZoom())));
     const kakaoMapType = mapType === "kakao-satellite" ? kakao.maps.MapTypeId.HYBRID : kakao.maps.MapTypeId.ROADMAP;
 
     const kakaoMap = new kakao.maps.Map(kakaoDiv, {
@@ -175,46 +175,40 @@ function createKakaoOverlay(map, mapType) {
       disableDoubleClickZoom: true,
     });
 
-    map._kakao = { div: kakaoDiv, map: kakaoMap, tilePane };
+    map._kakao = { div: kakaoDiv, map: kakaoMap, tilePane, bgPane };
 
-    // Leaflet → 카카오 동기화 (디바운스 + 정수 줌만)
     let syncTimer = null;
     function sync() {
       if (syncTimer) return;
       syncTimer = setTimeout(() => {
         syncTimer = null;
-        const c = map.getCenter();
-        const leafletZoom = Math.round(map.getZoom()); // 정수만
-        const kakaoLevel = Math.max(1, Math.min(14, 15 - leafletZoom));
-        kakaoMap.setCenter(new kakao.maps.LatLng(c.lat, c.lng));
-        kakaoMap.setLevel(kakaoLevel);
-      }, 50);
+        try {
+          const c = map.getCenter();
+          const lv = Math.max(1, Math.min(14, 15 - Math.round(map.getZoom())));
+          kakaoMap.setCenter(new kakao.maps.LatLng(c.lat, c.lng));
+          kakaoMap.setLevel(lv);
+        } catch (_) {}
+      }, 100);
     }
 
-    function syncPosition() {
-      const r = leafletEl.getBoundingClientRect();
-      kakaoDiv.style.top = r.top + "px";
-      kakaoDiv.style.left = r.left + "px";
-      kakaoDiv.style.width = r.width + "px";
-      kakaoDiv.style.height = r.height + "px";
+    function syncSize() {
       kakaoMap.relayout();
       sync();
     }
 
     map.on("moveend", sync);
     map.on("zoomend", sync);
-    map.on("resize", syncPosition);
-    window.addEventListener("resize", syncPosition);
+    map.on("resize", syncSize);
     map._kakao._sync = sync;
-    map._kakao._syncPos = syncPosition;
+    map._kakao._syncSize = syncSize;
 
-    setTimeout(() => { kakaoMap.relayout(); sync(); }, 300);
+    setTimeout(() => { kakaoMap.relayout(); sync(); }, 500);
     console.log("[Kakao] 오버레이 생성:", mapType);
 
   } catch (e) {
     console.error("[Kakao] 생성 실패:", e);
     kakaoDiv.remove();
-    if (tilePane) tilePane.style.opacity = "";
+    if (tilePane) tilePane.style.display = "";
     leafletEl.style.background = "";
   }
 }
@@ -223,10 +217,10 @@ function removeKakaoOverlay(map) {
   if (map._kakao) {
     map.off("moveend", map._kakao._sync);
     map.off("zoomend", map._kakao._sync);
-    map.off("resize", map._kakao._syncPos);
-    window.removeEventListener("resize", map._kakao._syncPos);
+    map.off("resize", map._kakao._syncSize);
     map._kakao.div?.remove();
-    if (map._kakao.tilePane) map._kakao.tilePane.style.opacity = "";
+    if (map._kakao.tilePane) map._kakao.tilePane.style.display = "";
+    if (map._kakao.bgPane) map._kakao.bgPane.style.background = "";
     map.getContainer().style.background = "";
     map._kakao = null;
   }
