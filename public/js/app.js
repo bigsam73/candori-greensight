@@ -122,44 +122,36 @@ function createKakaoOverlay(map, mapType) {
 
   if (!window._kakaoReady) {
     if (typeof kakao !== "undefined" && kakao.maps && kakao.maps.load) {
-      kakao.maps.load(function () {
-        window._kakaoReady = true;
-        createKakaoOverlay(map, mapType);
-      });
+      kakao.maps.load(function () { window._kakaoReady = true; createKakaoOverlay(map, mapType); });
       return;
     }
     if (!map._kakaoRetry) map._kakaoRetry = 0;
-    if (map._kakaoRetry < 3) {
-      map._kakaoRetry++;
-      setTimeout(() => createKakaoOverlay(map, mapType), 500);
-      return;
-    }
+    if (map._kakaoRetry++ < 3) { setTimeout(() => createKakaoOverlay(map, mapType), 500); return; }
     map._kakaoRetry = 0;
     showToast("카카오맵을 로드할 수 없습니다.");
     return;
   }
   map._kakaoRetry = 0;
 
+  // Leaflet 컨테이너를 완전히 숨기고, 같은 위치에 카카오맵을 표시
   const leafletEl = map.getContainer();
-
-  // 카카오맵 div를 Leaflet 컨테이너와 같은 크기로, 바로 위에 배치
-  const kakaoDiv = document.createElement("div");
-  kakaoDiv.id = "kakaoOverlay";
-  kakaoDiv.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;";
-
-  // Leaflet 컨테이너의 부모에 상대 위치 설정
   const parent = leafletEl.parentElement;
   parent.style.position = "relative";
 
-  // 카카오를 Leaflet 뒤에 삽입
-  parent.insertBefore(kakaoDiv, leafletEl);
+  // 카카오맵 div: Leaflet과 동일 크기, Leaflet 바로 뒤에
+  const kakaoDiv = document.createElement("div");
+  kakaoDiv.id = "kakaoOverlay";
+  kakaoDiv.style.cssText = `
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    width: ${leafletEl.offsetWidth}px;
+    height: ${leafletEl.offsetHeight}px;
+    z-index: 1;
+  `;
+  parent.appendChild(kakaoDiv);
 
-  // Leaflet 배경을 투명하게 (카카오가 보이도록)
-  leafletEl.style.background = "transparent";
-  const tilePane = leafletEl.querySelector(".leaflet-tile-pane");
-  if (tilePane) tilePane.style.display = "none";
-  const bgPane = leafletEl.querySelector(".leaflet-map-pane");
-  if (bgPane) bgPane.style.background = "transparent";
+  // Leaflet을 숨기기 (마커/폴리곤은 표시 못하지만 카카오맵이 확실히 보임)
+  leafletEl.style.display = "none";
+  map._kakao = { div: kakaoDiv, leafletDisplay: "block" };
 
   try {
     const center = map.getCenter();
@@ -170,59 +162,37 @@ function createKakaoOverlay(map, mapType) {
       center: new kakao.maps.LatLng(center.lat, center.lng),
       level: level,
       mapTypeId: kakaoMapType,
-      draggable: false,
-      scrollwheel: false,
-      disableDoubleClickZoom: true,
     });
 
-    map._kakao = { div: kakaoDiv, map: kakaoMap, tilePane, bgPane };
+    map._kakao.map = kakaoMap;
 
-    let syncTimer = null;
-    function sync() {
-      if (syncTimer) return;
-      syncTimer = setTimeout(() => {
-        syncTimer = null;
-        try {
-          const c = map.getCenter();
-          const lv = Math.max(1, Math.min(14, 15 - Math.round(map.getZoom())));
-          kakaoMap.setCenter(new kakao.maps.LatLng(c.lat, c.lng));
-          kakaoMap.setLevel(lv);
-        } catch (_) {}
-      }, 100);
-    }
+    // 카카오맵에서 드래그/줌 → Leaflet에 반영
+    kakao.maps.event.addListener(kakaoMap, "center_changed", function () {
+      const c = kakaoMap.getCenter();
+      map.setView([c.getLat(), c.getLng()], 15 - kakaoMap.getLevel(), { animate: false });
+    });
 
-    function syncSize() {
-      kakaoMap.relayout();
-      sync();
-    }
+    kakao.maps.event.addListener(kakaoMap, "zoom_changed", function () {
+      const c = kakaoMap.getCenter();
+      map.setView([c.getLat(), c.getLng()], 15 - kakaoMap.getLevel(), { animate: false });
+    });
 
-    map.on("moveend", sync);
-    map.on("zoomend", sync);
-    map.on("resize", syncSize);
-    map._kakao._sync = sync;
-    map._kakao._syncSize = syncSize;
-
-    setTimeout(() => { kakaoMap.relayout(); sync(); }, 500);
+    setTimeout(() => kakaoMap.relayout(), 300);
     console.log("[Kakao] 오버레이 생성:", mapType);
 
   } catch (e) {
     console.error("[Kakao] 생성 실패:", e);
     kakaoDiv.remove();
-    if (tilePane) tilePane.style.display = "";
-    leafletEl.style.background = "";
+    leafletEl.style.display = "";
   }
 }
 
 function removeKakaoOverlay(map) {
   if (map._kakao) {
-    map.off("moveend", map._kakao._sync);
-    map.off("zoomend", map._kakao._sync);
-    map.off("resize", map._kakao._syncSize);
     map._kakao.div?.remove();
-    if (map._kakao.tilePane) map._kakao.tilePane.style.display = "";
-    if (map._kakao.bgPane) map._kakao.bgPane.style.background = "";
-    map.getContainer().style.background = "";
+    map.getContainer().style.display = "";
     map._kakao = null;
+    map.invalidateSize();
   }
 }
 
