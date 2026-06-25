@@ -1314,6 +1314,68 @@ body {
 }
 .edit-location-window:hover .resize-grip { opacity: 0.8; }
 
+/* ============ COMPARE SLIDER ============ */
+.compare-slider-container {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius);
+  cursor: ew-resize;
+  user-select: none;
+}
+.compare-slider-container canvas { display: block; width: 100%; }
+.compare-slider-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: #fff;
+  box-shadow: 0 0 8px rgba(0,0,0,0.5);
+  z-index: 10;
+  cursor: ew-resize;
+}
+.compare-slider-handle::after {
+  content: "◀ ▶";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  color: #333;
+  font-size: 10px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.compare-slider-label {
+  position: absolute;
+  top: 8px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  z-index: 5;
+}
+.compare-slider-label-left { left: 8px; background: rgba(74,222,128,0.9); color: #0f1117; }
+.compare-slider-label-right { right: 8px; background: rgba(96,165,250,0.9); color: #0f1117; }
+
+/* Satellite date badge */
+.sat-date-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 500;
+  background: rgba(30,33,48,0.85);
+  color: #e8eaf0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
+  pointer-events: none;
+}
+.sat-date-badge .material-icons-outlined { font-size: 14px; vertical-align: middle; margin-right: 4px; }
+
 /* ============ POLYGON LABELS ============ */
 .poly-label {
   background: rgba(30, 33, 48, 0.85) !important;

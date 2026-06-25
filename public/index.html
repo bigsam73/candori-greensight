@@ -91,6 +91,14 @@
         <span class="material-icons-outlined">description</span>
         <span>리포트</span>
       </a>
+      <a href="#" class="nav-item" data-view="compare-slider">
+        <span class="material-icons-outlined">compare</span>
+        <span>시간비교</span>
+      </a>
+      <a href="#" class="nav-item" data-view="gdd">
+        <span class="material-icons-outlined">thermostat</span>
+        <span>GDD 계산기</span>
+      </a>
       <a href="#" class="nav-item" data-view="ontology">
         <span class="material-icons-outlined">account_tree</span>
         <span>온톨로지</span>
@@ -577,6 +585,38 @@
           리포트 생성
         </button>
         <div id="reportOutput" style="margin-top:24px"></div>
+      </div>
+    </div>
+
+    <!-- Compare Slider View (시간별 비교) -->
+    <div class="view" id="view-compare-slider">
+      <div class="view-header">
+        <h2>시간별 비교 슬라이더</h2>
+        <div class="header-controls">
+          <select id="sliderCourseSelect" class="select-md"><option value="">골프장 선택...</option></select>
+        </div>
+      </div>
+      <div id="compareSliderContent">
+        <div style="text-align:center;padding:60px;color:var(--text-muted)">
+          <span class="material-icons-outlined" style="font-size:64px;display:block;margin-bottom:8px">compare</span>
+          <p>골프장을 선택하면 두 시점의 NDVI를 슬라이더로 비교할 수 있습니다</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- GDD Calculator View -->
+    <div class="view" id="view-gdd">
+      <div class="view-header">
+        <h2>GDD 계산기 (Growing Degree Days)</h2>
+        <div class="header-controls">
+          <select id="gddCourseSelect" class="select-md"><option value="">골프장 선택...</option></select>
+        </div>
+      </div>
+      <div id="gddContent">
+        <div style="text-align:center;padding:60px;color:var(--text-muted)">
+          <span class="material-icons-outlined" style="font-size:64px;display:block;margin-bottom:8px">thermostat</span>
+          <p>골프장을 선택하면 잔디 생장 적산온도(GDD)를 확인할 수 있습니다</p>
+        </div>
       </div>
     </div>
 

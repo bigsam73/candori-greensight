@@ -532,6 +532,8 @@ function switchView(viewId) {
     alerts: "알림 센터",
     satellites: "위성 데이터 소스",
     report: "리포트",
+    "compare-slider": "시간비교 슬라이더",
+    gdd: "GDD 계산기",
     ontology: "온톨로지",
     terrain: "지형/LiDAR",
     versions: "버전 관리",
@@ -544,6 +546,8 @@ function switchView(viewId) {
   if (viewId === "analysis") initAnalysisView();
   if (viewId === "compare") initCompareView();
   if (viewId === "satellites") loadSatelliteCatalog();
+  if (viewId === "compare-slider") initCompareSliderView();
+  if (viewId === "gdd") initGDDView();
   if (viewId === "ontology") initOntologyView();
   if (viewId === "terrain") initTerrainView();
   if (viewId === "versions") loadVersions();
@@ -611,6 +615,8 @@ function populateCourseSelectors() {
     "analysisCourseSelect",
     "compareCourses",
     "reportCourse",
+    "sliderCourseSelect",
+    "gddCourseSelect",
     "ontologyCourseSelect",
     "terrainCourseSelect",
   ];
@@ -4143,6 +4149,310 @@ function calculateArea(coords) {
   const lngScale = 111320 * Math.cos((coords[0][0] * Math.PI) / 180);
   const areaSqm = Math.round(area * latScale * lngScale);
   return areaSqm.toLocaleString();
+}
+
+// ============ COMPARE SLIDER (시간별 비교) ============
+
+function initCompareSliderView() {
+  const select = document.getElementById("sliderCourseSelect");
+  if (!select._bound) {
+    select.addEventListener("change", (e) => { if (e.target.value) loadCompareSlider(e.target.value); });
+    select._bound = true;
+  }
+  if (select.value) loadCompareSlider(select.value);
+}
+
+async function loadCompareSlider(courseId) {
+  const content = document.getElementById("compareSliderContent");
+  content.innerHTML = '<div class="loading"><div class="spinner"></div> 데이터 로드 중...</div>';
+
+  try {
+    const [ndviData, course] = await Promise.all([
+      API.get(`/api/ndvi/course/${courseId}?days=365`),
+      API.get(`/api/golf-courses/${courseId}`),
+    ]);
+
+    if (ndviData.length < 2) {
+      content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">비교할 데이터가 부족합니다 (최소 2건 필요)</div>';
+      return;
+    }
+
+    const sorted = ndviData.sort((a, b) => a.date.localeCompare(b.date));
+    const oldest = sorted[0];
+    const latest = sorted[sorted.length - 1];
+
+    // 날짜 선택 옵션
+    const dateOptions = sorted.map((r) => `<option value="${r.date}">${r.date} (${r.satellite}, NDVI ${r.ndvi_mean?.toFixed(3)})</option>`).join("");
+
+    content.innerHTML = `
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>${course.name} - 시간별 NDVI 비교</h3></div>
+        <div style="padding:16px">
+          <div style="display:flex;gap:16px;margin-bottom:16px">
+            <div style="flex:1">
+              <label style="font-size:11px;color:var(--text-muted)">이전 (좌측)</label>
+              <select id="sliderDateLeft" class="edit-input" style="background:rgba(74,222,128,0.1);border-color:var(--accent-green)">
+                ${dateOptions}
+              </select>
+            </div>
+            <div style="flex:1">
+              <label style="font-size:11px;color:var(--text-muted)">이후 (우측)</label>
+              <select id="sliderDateRight" class="edit-input" style="background:rgba(96,165,250,0.1);border-color:var(--accent-blue)">
+                ${dateOptions}
+              </select>
+            </div>
+          </div>
+
+          <!-- 비교 슬라이더 -->
+          <div class="compare-slider-container" id="compareSliderBox" style="height:400px;background:var(--bg-primary)">
+            <div id="sliderMapLeft" style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
+            <div id="sliderMapRight" style="position:absolute;top:0;left:0;width:50%;height:100%;overflow:hidden"></div>
+            <div class="compare-slider-handle" id="sliderHandle" style="left:50%"></div>
+            <div class="compare-slider-label compare-slider-label-left" id="sliderLabelLeft">${oldest.date}</div>
+            <div class="compare-slider-label compare-slider-label-right" id="sliderLabelRight">${latest.date}</div>
+          </div>
+
+          <div style="margin-top:12px;display:flex;gap:16px;font-size:12px">
+            <div style="flex:1;padding:10px;background:rgba(74,222,128,0.08);border-radius:8px;border:1px solid rgba(74,222,128,0.2)">
+              <div style="font-weight:600;color:var(--accent-green)">이전</div>
+              <div id="sliderInfoLeft" style="margin-top:4px;color:var(--text-secondary)"></div>
+            </div>
+            <div style="flex:1;padding:10px;background:rgba(96,165,250,0.08);border-radius:8px;border:1px solid rgba(96,165,250,0.2)">
+              <div style="font-weight:600;color:var(--accent-blue)">이후</div>
+              <div id="sliderInfoRight" style="margin-top:4px;color:var(--text-secondary)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // 날짜 선택 기본값
+    document.getElementById("sliderDateLeft").value = oldest.date;
+    document.getElementById("sliderDateRight").value = latest.date;
+
+    // 지도 기반 슬라이더 초기화
+    initSliderMaps(course, oldest, latest);
+
+    // 날짜 변경 이벤트
+    document.getElementById("sliderDateLeft").addEventListener("change", () => updateSlider(course, sorted));
+    document.getElementById("sliderDateRight").addEventListener("change", () => updateSlider(course, sorted));
+
+  } catch (err) {
+    content.innerHTML = `<div style="color:var(--accent-red);text-align:center;padding:40px">${err.message}</div>`;
+  }
+}
+
+let sliderMapL = null, sliderMapR = null;
+
+function initSliderMaps(course, leftRecord, rightRecord) {
+  if (sliderMapL) { sliderMapL.remove(); sliderMapL = null; }
+  if (sliderMapR) { sliderMapR.remove(); sliderMapR = null; }
+
+  // Left map (full width)
+  sliderMapL = L.map("sliderMapLeft", { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false })
+    .setView([course.lat, course.lng], 15);
+  L.tileLayer("https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", { maxZoom: 21 }).addTo(sliderMapL);
+
+  // Right map (clipped)
+  sliderMapR = L.map("sliderMapRight", { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false })
+    .setView([course.lat, course.lng], 15);
+  L.tileLayer("https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", { maxZoom: 21 }).addTo(sliderMapR);
+
+  // NDVI 오버레이 (좌/우)
+  addNDVIGridToMap(sliderMapL, course, leftRecord, "#4ade80");
+  addNDVIGridToMap(sliderMapR, course, rightRecord, "#60a5fa");
+
+  updateSliderInfo(leftRecord, rightRecord);
+
+  // 슬라이더 드래그
+  const handle = document.getElementById("sliderHandle");
+  const container = document.getElementById("compareSliderBox");
+  const rightDiv = document.getElementById("sliderMapRight");
+
+  let dragging = false;
+  handle.addEventListener("mousedown", () => dragging = true);
+  container.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const rect = container.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+    const pct = (x / rect.width) * 100;
+    handle.style.left = pct + "%";
+    rightDiv.style.width = pct + "%";
+    sliderMapR.invalidateSize();
+  });
+  document.addEventListener("mouseup", () => dragging = false);
+}
+
+function addNDVIGridToMap(map, course, record, tintColor) {
+  const cells = generateNDVIGrid(course, record);
+  cells.forEach((cell) => {
+    L.rectangle(cell.bounds, {
+      color: "transparent", weight: 0, fillColor: getNDVIColor(cell.ndvi), fillOpacity: 0.5,
+    }).addTo(map);
+  });
+  // 촬영날짜 배지
+  const dateBadge = L.control({ position: "bottomleft" });
+  dateBadge.onAdd = () => {
+    const div = L.DomUtil.create("div", "sat-date-badge");
+    div.innerHTML = `<span class="material-icons-outlined">satellite_alt</span>${record.satellite} | ${record.date} | NDVI ${record.ndvi_mean?.toFixed(3)}`;
+    return div;
+  };
+  dateBadge.addTo(map);
+}
+
+function updateSlider(course, sorted) {
+  const leftDate = document.getElementById("sliderDateLeft").value;
+  const rightDate = document.getElementById("sliderDateRight").value;
+  const leftRec = sorted.find((r) => r.date === leftDate);
+  const rightRec = sorted.find((r) => r.date === rightDate);
+  if (leftRec && rightRec) {
+    initSliderMaps(course, leftRec, rightRec);
+    document.getElementById("sliderLabelLeft").textContent = leftDate;
+    document.getElementById("sliderLabelRight").textContent = rightDate;
+  }
+}
+
+function updateSliderInfo(left, right) {
+  const diff = right.ndvi_mean - left.ndvi_mean;
+  const pct = left.ndvi_mean ? ((diff / left.ndvi_mean) * 100).toFixed(1) : "0";
+  document.getElementById("sliderInfoLeft").innerHTML = `${left.date} | ${left.satellite}<br>NDVI: <b style="color:${getNDVIColor(left.ndvi_mean)}">${left.ndvi_mean?.toFixed(3)}</b>`;
+  document.getElementById("sliderInfoRight").innerHTML = `${right.date} | ${right.satellite}<br>NDVI: <b style="color:${getNDVIColor(right.ndvi_mean)}">${right.ndvi_mean?.toFixed(3)}</b><br>변화: <b style="color:${diff >= 0 ? "var(--accent-green)" : "var(--accent-red)"}">${diff >= 0 ? "+" : ""}${diff.toFixed(3)} (${pct}%)</b>`;
+}
+
+// ============ GDD CALCULATOR (잔디 생장 적산온도) ============
+
+function initGDDView() {
+  const select = document.getElementById("gddCourseSelect");
+  if (!select._bound) {
+    select.addEventListener("change", (e) => { if (e.target.value) loadGDD(e.target.value); });
+    select._bound = true;
+  }
+  if (select.value) loadGDD(select.value);
+}
+
+async function loadGDD(courseId) {
+  const content = document.getElementById("gddContent");
+  content.innerHTML = '<div class="loading"><div class="spinner"></div> GDD 계산 중...</div>';
+
+  try {
+    const [course, temp] = await Promise.all([
+      API.get(`/api/golf-courses/${courseId}`),
+      API.get(`/api/terrain/temperature/${courseId}`),
+    ]);
+
+    if (!temp.ok || !temp.hourly) throw new Error("온도 데이터 없음");
+
+    const hourly = temp.hourly;
+    const BASE_TEMP = 10; // 한지형 잔디 기본 온도 (°C)
+
+    // 일별 GDD 계산
+    const dailyGDD = {};
+    hourly.time.forEach((t, i) => {
+      const day = t.substring(0, 10);
+      const airTemp = hourly.air_temp?.[i] || 0;
+      if (!dailyGDD[day]) dailyGDD[day] = { temps: [], min: 999, max: -999 };
+      dailyGDD[day].temps.push(airTemp);
+      dailyGDD[day].min = Math.min(dailyGDD[day].min, airTemp);
+      dailyGDD[day].max = Math.max(dailyGDD[day].max, airTemp);
+    });
+
+    let cumulativeGDD = 0;
+    const gddData = Object.entries(dailyGDD).map(([day, d]) => {
+      const avgTemp = (d.max + d.min) / 2;
+      const gdd = Math.max(0, avgTemp - BASE_TEMP);
+      cumulativeGDD += gdd;
+      return { day, min: d.min, max: d.max, avg: avgTemp, gdd, cumulative: cumulativeGDD };
+    });
+
+    // 잔디 관리 기준
+    let gddStatus = "휴면기";
+    let gddAdvice = "잔디 생장 정지 상태입니다.";
+    if (cumulativeGDD > 500) { gddStatus = "활발 생장"; gddAdvice = "정기적 깎기, 시비 권장"; }
+    else if (cumulativeGDD > 200) { gddStatus = "초기 생장"; gddAdvice = "첫 시비 시기 (Pre-emergent 적용)"; }
+    else if (cumulativeGDD > 50) { gddStatus = "생장 시작"; gddAdvice = "잔디가 깨어나는 시기"; }
+
+    content.innerHTML = `
+      <div class="summary-cards" style="margin-bottom:16px">
+        <div class="card summary-card">
+          <div class="card-icon green"><span class="material-icons-outlined">thermostat</span></div>
+          <div class="card-info">
+            <div class="card-value" style="color:var(--accent-green)">${cumulativeGDD.toFixed(0)}</div>
+            <div class="card-label">누적 GDD (기준 ${BASE_TEMP}°C)</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon blue"><span class="material-icons-outlined">grass</span></div>
+          <div class="card-info">
+            <div class="card-value">${gddStatus}</div>
+            <div class="card-label">잔디 생장 단계</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon orange"><span class="material-icons-outlined">calendar_today</span></div>
+          <div class="card-info">
+            <div class="card-value">${gddData.length}일</div>
+            <div class="card-label">분석 기간</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon purple"><span class="material-icons-outlined">tips_and_updates</span></div>
+          <div class="card-info">
+            <div class="card-value" style="font-size:14px">${gddAdvice}</div>
+            <div class="card-label">관리 권고</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>GDD 누적 차트</h3></div>
+        <div class="chart-wrapper" style="height:300px">
+          <canvas id="gddChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>GDD 관리 기준표</h3></div>
+        <div style="padding:16px">
+          <table class="report-table">
+            <thead><tr><th>누적 GDD</th><th>잔디 상태</th><th>관리 작업</th></tr></thead>
+            <tbody>
+              <tr><td>0~50</td><td>휴면</td><td>관수 최소화, 통행 제한</td></tr>
+              <tr><td>50~150</td><td>생장 시작</td><td>첫 관수, 에어레이션 준비</td></tr>
+              <tr style="${cumulativeGDD >= 150 && cumulativeGDD < 300 ? "background:rgba(74,222,128,0.1)" : ""}"><td>150~300</td><td>초기 생장</td><td>Pre-emergent 제초제, 첫 시비</td></tr>
+              <tr style="${cumulativeGDD >= 300 && cumulativeGDD < 500 ? "background:rgba(74,222,128,0.1)" : ""}"><td>300~500</td><td>성장기</td><td>정기 깎기 시작, 균형 시비</td></tr>
+              <tr style="${cumulativeGDD >= 500 ? "background:rgba(74,222,128,0.1)" : ""}"><td>500+</td><td>활발 생장</td><td>주 2~3회 깎기, 관수 관리</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    // GDD 차트
+    const canvas = document.getElementById("gddChart");
+    if (state.charts?.gddChart) state.charts.gddChart.destroy();
+    state.charts.gddChart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: gddData.map((d) => d.day.substring(5)),
+        datasets: [
+          { label: "누적 GDD", data: gddData.map((d) => d.cumulative), borderColor: "#4ade80", backgroundColor: "rgba(74,222,128,0.1)", borderWidth: 2, fill: true, tension: 0.3, pointRadius: 0, yAxisID: "y" },
+          { label: "일일 GDD", data: gddData.map((d) => d.gdd), borderColor: "#fb923c", borderWidth: 1, fill: false, tension: 0.3, pointRadius: 1, yAxisID: "y1" },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: "#9ba1b7" } } },
+        scales: {
+          x: { grid: { color: "rgba(45,49,72,0.5)" }, ticks: { color: "#6b7194", font: { size: 9 } } },
+          y: { position: "left", grid: { color: "rgba(45,49,72,0.5)" }, ticks: { color: "#4ade80" }, title: { display: true, text: "누적 GDD", color: "#4ade80" } },
+          y1: { position: "right", grid: { display: false }, ticks: { color: "#fb923c" }, title: { display: true, text: "일일 GDD", color: "#fb923c" } },
+        },
+      },
+    });
+
+  } catch (err) {
+    content.innerHTML = `<div style="color:var(--accent-red);text-align:center;padding:40px">${err.message}</div>`;
+  }
 }
 
 // ============ ONTOLOGY (골프장 온톨로지) ============
