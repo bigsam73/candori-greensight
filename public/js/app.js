@@ -532,6 +532,7 @@ function switchView(viewId) {
     alerts: "알림 센터",
     satellites: "위성 데이터 소스",
     report: "리포트",
+    ontology: "온톨로지",
     terrain: "지형/LiDAR",
     versions: "버전 관리",
   };
@@ -543,6 +544,7 @@ function switchView(viewId) {
   if (viewId === "analysis") initAnalysisView();
   if (viewId === "compare") initCompareView();
   if (viewId === "satellites") loadSatelliteCatalog();
+  if (viewId === "ontology") initOntologyView();
   if (viewId === "terrain") initTerrainView();
   if (viewId === "versions") loadVersions();
 
@@ -609,6 +611,7 @@ function populateCourseSelectors() {
     "analysisCourseSelect",
     "compareCourses",
     "reportCourse",
+    "ontologyCourseSelect",
     "terrainCourseSelect",
   ];
 
@@ -4141,6 +4144,297 @@ function calculateArea(coords) {
   const areaSqm = Math.round(area * latScale * lngScale);
   return areaSqm.toLocaleString();
 }
+
+// ============ ONTOLOGY (골프장 온톨로지) ============
+
+function initOntologyView() {
+  const select = document.getElementById("ontologyCourseSelect");
+  if (!select._bound) {
+    select.addEventListener("change", (e) => {
+      if (e.target.value) loadOntology(e.target.value);
+    });
+    select._bound = true;
+  }
+  if (select.value) loadOntology(select.value);
+}
+
+async function loadOntology(courseId) {
+  const content = document.getElementById("ontologyContent");
+  content.innerHTML = '<div class="loading"><div class="spinner"></div> 온톨로지 데이터 로드 중...</div>';
+
+  try {
+    const [ontology, course, zoneTypes] = await Promise.all([
+      API.get(`/api/zones/ontology/${courseId}`),
+      API.get(`/api/golf-courses/${courseId}`),
+      API.get("/api/zones/types"),
+    ]);
+
+    const typeMap = {};
+    zoneTypes.forEach((t) => { typeMap[t.id] = t; });
+
+    content.innerHTML = `
+      <!-- 요약 -->
+      <div class="summary-cards" style="margin-bottom:16px">
+        <div class="card summary-card">
+          <div class="card-icon green"><span class="material-icons-outlined">account_tree</span></div>
+          <div class="card-info">
+            <div class="card-value">${ontology.total_zones}</div>
+            <div class="card-label">등록된 구역</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon blue"><span class="material-icons-outlined">build</span></div>
+          <div class="card-info">
+            <div class="card-value">${ontology.total_actions}</div>
+            <div class="card-label">관리 작업 기록</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon orange"><span class="material-icons-outlined">sports_golf</span></div>
+          <div class="card-info">
+            <div class="card-value">${Object.keys(ontology.ontology || {}).length}</div>
+            <div class="card-label">코스 수</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon purple"><span class="material-icons-outlined">grass</span></div>
+          <div class="card-info">
+            <div class="card-value">${course.latest_ndvi?.toFixed(3) || "--"}</div>
+            <div class="card-label">현재 NDVI</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <!-- 계층구조 트리 -->
+        <div class="card">
+          <div class="card-header">
+            <h3>온톨로지 계층구조</h3>
+            <button class="btn btn-sm btn-primary" onclick="openAddZone(${courseId})">
+              <span class="material-icons-outlined">add</span> 구역 추가
+            </button>
+          </div>
+          <div style="padding:16px" id="ontologyTree">
+            ${renderOntologyTree(ontology, typeMap, courseId, course)}
+          </div>
+        </div>
+
+        <!-- 관계도 -->
+        <div class="card">
+          <div class="card-header"><h3>객체 관계도</h3></div>
+          <div style="padding:16px">
+            ${renderRelationshipDiagram(ontology, course)}
+          </div>
+        </div>
+      </div>
+
+      <!-- 구역 유형 범례 -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>구역 유형</h3></div>
+        <div style="padding:12px;display:flex;flex-wrap:wrap;gap:8px">
+          ${zoneTypes.map((t) => `
+            <div style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:var(--bg-primary);border-radius:6px;border:1px solid var(--border-color)">
+              <div style="width:12px;height:12px;border-radius:3px;background:${t.color}"></div>
+              <span style="font-size:11px;font-weight:500">${t.name}</span>
+              <span style="font-size:10px;color:var(--text-muted)">${t.description}</span>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    content.innerHTML = `<div style="color:var(--accent-red);text-align:center;padding:40px">로드 실패: ${err.message}</div>`;
+  }
+}
+
+function renderOntologyTree(ontology, typeMap, courseId, course) {
+  const ont = ontology.ontology || {};
+  const courseNames = Object.keys(ont);
+
+  if (courseNames.length === 0) {
+    return `
+      <div style="text-align:center;padding:24px;color:var(--text-muted)">
+        <span class="material-icons-outlined" style="font-size:32px;display:block;margin-bottom:8px">playlist_add</span>
+        <div>등록된 구역이 없습니다</div>
+        <div style="font-size:11px;margin-top:4px">"구역 추가" 버튼으로 그린, 페어웨이 등을 등록하세요</div>
+      </div>
+    `;
+  }
+
+  let html = `
+    <div style="font-size:12px">
+      <!-- 골프장 루트 -->
+      <div style="display:flex;align-items:center;gap:6px;padding:6px 0;font-weight:700;font-size:14px">
+        <span class="material-icons-outlined" style="color:var(--accent-green)">sports_golf</span>
+        ${course.name}
+      </div>
+  `;
+
+  courseNames.forEach((courseName) => {
+    const holes = ont[courseName];
+    html += `
+      <div style="margin-left:20px;border-left:2px solid var(--border-color);padding-left:12px;margin-top:4px">
+        <div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-weight:600;color:var(--accent-blue)">
+          <span class="material-icons-outlined" style="font-size:16px">golf_course</span>
+          ${courseName}
+        </div>
+    `;
+
+    Object.keys(holes).sort((a, b) => {
+      if (a === "공용") return 1;
+      if (b === "공용") return -1;
+      return Number(a) - Number(b);
+    }).forEach((holeNum) => {
+      const zones = holes[holeNum];
+      html += `
+        <div style="margin-left:16px;border-left:2px solid var(--border-color);padding-left:10px;margin-top:2px">
+          <div style="font-weight:500;padding:3px 0;color:var(--text-secondary)">
+            <span class="material-icons-outlined" style="font-size:14px;vertical-align:middle">flag</span>
+            ${holeNum === "공용" ? "공용 구역" : holeNum + "번홀"}
+          </div>
+      `;
+
+      zones.forEach((z) => {
+        const type = typeMap[z.type] || { color: "#888", name: z.type };
+        const lastAction = z.last_action;
+        html += `
+          <div style="margin-left:14px;padding:6px 8px;margin-top:2px;background:var(--bg-primary);border-radius:6px;border-left:3px solid ${type.color}">
+            <div style="display:flex;align-items:center;gap:6px;justify-content:space-between">
+              <div style="display:flex;align-items:center;gap:6px">
+                <div style="width:8px;height:8px;border-radius:50%;background:${type.color}"></div>
+                <span style="font-weight:500">${z.name}</span>
+                <span style="font-size:10px;color:var(--text-muted)">${type.name}</span>
+              </div>
+              <div style="display:flex;gap:4px">
+                <span style="font-size:10px;color:var(--text-muted)">${z.action_count}건</span>
+                <button style="background:none;border:none;color:var(--accent-red);cursor:pointer;padding:0" onclick="deleteZone(${courseId},${z.id})">
+                  <span class="material-icons-outlined" style="font-size:14px">close</span>
+                </button>
+              </div>
+            </div>
+            ${z.notes ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">${z.notes}</div>` : ""}
+            ${lastAction ? `<div style="font-size:10px;color:var(--accent-blue);margin-top:2px">최근: ${lastAction.type} (${lastAction.date})</div>` : ""}
+          </div>
+        `;
+      });
+
+      html += `</div>`;
+    });
+
+    html += `</div>`;
+  });
+
+  html += `</div>`;
+  return html;
+}
+
+function renderRelationshipDiagram(ontology, course) {
+  const ont = ontology.ontology || {};
+  const courseNames = Object.keys(ont);
+  const totalZones = ontology.total_zones;
+  const totalActions = ontology.total_actions;
+
+  // SVG 기반 관계도
+  const w = 380, h = 320;
+  const cx = w / 2, cy = 50;
+
+  let svg = `<svg width="${w}" height="${h}" style="font-family:Inter,sans-serif">`;
+  svg += `<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#6b7194"/></marker></defs>`;
+
+  // 골프장 노드 (루트)
+  svg += `<rect x="${cx-50}" y="10" width="100" height="30" rx="6" fill="#4ade80" opacity="0.2" stroke="#4ade80"/>`;
+  svg += `<text x="${cx}" y="30" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="600">${course.name?.substring(0, 10)}</text>`;
+
+  // 코스 노드
+  const courses = courseNames.length || 1;
+  const courseSpacing = Math.min(120, (w - 40) / courses);
+  const courseY = 80;
+
+  courseNames.forEach((cn, i) => {
+    const x = 40 + i * courseSpacing + courseSpacing / 2;
+    // 연결선
+    svg += `<line x1="${cx}" y1="40" x2="${x}" y2="${courseY}" stroke="#6b7194" stroke-width="1" marker-end="url(#arrow)"/>`;
+    // 코스 노드
+    svg += `<rect x="${x-40}" y="${courseY}" width="80" height="26" rx="5" fill="#60a5fa" opacity="0.2" stroke="#60a5fa"/>`;
+    svg += `<text x="${x}" y="${courseY+17}" text-anchor="middle" fill="#60a5fa" font-size="10" font-weight="500">${cn.substring(0, 8)}</text>`;
+
+    // 홀/구역 노드
+    const holes = ont[cn];
+    const holeKeys = Object.keys(holes);
+    const holeY = courseY + 60;
+    const holeSpacing = Math.min(60, courseSpacing / (holeKeys.length || 1));
+
+    holeKeys.slice(0, 4).forEach((hk, j) => {
+      const hx = x - 30 + j * holeSpacing;
+      svg += `<line x1="${x}" y1="${courseY+26}" x2="${hx}" y2="${holeY}" stroke="#6b7194" stroke-width="1" marker-end="url(#arrow)"/>`;
+      svg += `<rect x="${hx-18}" y="${holeY}" width="36" height="22" rx="4" fill="#fb923c" opacity="0.2" stroke="#fb923c"/>`;
+      svg += `<text x="${hx}" y="${holeY+15}" text-anchor="middle" fill="#fb923c" font-size="9">${hk === "공용" ? "공용" : hk + "H"}</text>`;
+
+      // 구역 노드
+      const zones = holes[hk];
+      const zoneY = holeY + 50;
+      zones.slice(0, 3).forEach((z, k) => {
+        const zx = hx - 10 + k * 22;
+        svg += `<line x1="${hx}" y1="${holeY+22}" x2="${zx}" y2="${zoneY}" stroke="#6b7194" stroke-width="1"/>`;
+        const tc = z.type === "green" ? "#4ade80" : z.type === "fairway" ? "#86efac" : "#fbbf24";
+        svg += `<circle cx="${zx}" cy="${zoneY+6}" r="6" fill="${tc}" opacity="0.5" stroke="${tc}"/>`;
+      });
+    });
+  });
+
+  // 범례
+  const ly = h - 60;
+  svg += `<text x="10" y="${ly}" fill="#9ba1b7" font-size="9">관계 구조:</text>`;
+  svg += `<rect x="10" y="${ly+8}" width="10" height="10" rx="2" fill="#4ade80" opacity="0.3"/><text x="24" y="${ly+17}" fill="#9ba1b7" font-size="9">골프장</text>`;
+  svg += `<rect x="70" y="${ly+8}" width="10" height="10" rx="2" fill="#60a5fa" opacity="0.3"/><text x="84" y="${ly+17}" fill="#9ba1b7" font-size="9">코스</text>`;
+  svg += `<rect x="120" y="${ly+8}" width="10" height="10" rx="2" fill="#fb923c" opacity="0.3"/><text x="134" y="${ly+17}" fill="#9ba1b7" font-size="9">홀</text>`;
+  svg += `<circle cx="180" cy="${ly+13}" r="5" fill="#4ade80" opacity="0.5"/><text x="189" y="${ly+17}" fill="#9ba1b7" font-size="9">구역</text>`;
+
+  svg += `<text x="10" y="${h-15}" fill="#6b7194" font-size="10">구역 ${totalZones}개 | 작업 ${totalActions}건</text>`;
+
+  svg += `</svg>`;
+  return svg;
+}
+
+window.openAddZone = async function (courseId) {
+  const types = await API.get("/api/zones/types");
+  const name = prompt("구역 이름 (예: 1번홀 그린):");
+  if (!name) return;
+
+  const typeOptions = types.map((t) => `${t.id}: ${t.name}`).join("\n");
+  const type = prompt("구역 유형 입력:\n" + typeOptions + "\n\n유형 ID:", "green");
+  if (!type) return;
+
+  const courseName = prompt("코스 이름 (예: 동코스):", "기본 코스");
+  const holeNum = prompt("홀 번호 (없으면 비워두세요):", "");
+  const notes = prompt("메모 (선택):", "");
+
+  try {
+    await API.post(`/api/zones/${courseId}`, {
+      name,
+      type,
+      course_name: courseName || "기본 코스",
+      hole_number: holeNum ? parseInt(holeNum) : null,
+      boundary: [],
+      notes: notes || "",
+    });
+    showToast(`구역 추가 완료: ${name}`);
+    loadOntology(courseId);
+  } catch (err) {
+    alert("구역 추가 실패: " + err.message);
+  }
+};
+
+window.deleteZone = async function (courseId, zoneId) {
+  if (!confirm("이 구역을 삭제하시겠습니까?")) return;
+  try {
+    await API.delete(`/api/zones/${courseId}/${zoneId}`);
+    showToast("구역 삭제 완료");
+    loadOntology(courseId);
+  } catch (err) {
+    alert("삭제 실패");
+  }
+};
 
 // ============ TERRAIN / LiDAR (지형 분석) ============
 

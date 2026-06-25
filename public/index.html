@@ -91,6 +91,10 @@
         <span class="material-icons-outlined">description</span>
         <span>리포트</span>
       </a>
+      <a href="#" class="nav-item" data-view="ontology">
+        <span class="material-icons-outlined">account_tree</span>
+        <span>온톨로지</span>
+      </a>
       <a href="#" class="nav-item" data-view="terrain">
         <span class="material-icons-outlined">terrain</span>
         <span>지형/LiDAR</span>
@@ -573,6 +577,24 @@
           리포트 생성
         </button>
         <div id="reportOutput" style="margin-top:24px"></div>
+      </div>
+    </div>
+
+    <!-- Ontology View -->
+    <div class="view" id="view-ontology">
+      <div class="view-header">
+        <h2>골프장 온톨로지</h2>
+        <div class="header-controls">
+          <select id="ontologyCourseSelect" class="select-md">
+            <option value="">골프장 선택...</option>
+          </select>
+        </div>
+      </div>
+      <div id="ontologyContent">
+        <div style="text-align:center;padding:60px;color:var(--text-muted)">
+          <span class="material-icons-outlined" style="font-size:64px;display:block;margin-bottom:8px">account_tree</span>
+          <p>골프장을 선택하면 구역 계층구조와 관리 이력을 확인할 수 있습니다</p>
+        </div>
       </div>
     </div>
 
