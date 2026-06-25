@@ -422,37 +422,49 @@ async function searchAddress(query) {
         const name = item.dataset.name;
         const bboxStr = item.dataset.bbox;
 
-        // 지도 이동
+        // 지도 이동 (카카오맵 모드 호환)
         const targetMap = state.fullMap || state.dashboardMap;
         if (targetMap) {
           if (bboxStr) {
             const [s, n, w, e] = bboxStr.split(",").map(Number);
-            targetMap.fitBounds([[s, w], [n, e]], { maxZoom: 17, padding: [20, 20] });
+            const center = [(s + n) / 2, (w + e) / 2];
+            safeMapMove(targetMap, center[0], center[1], 16);
           } else {
-            targetMap.setView([lat, lng], 16);
+            safeMapMove(targetMap, lat, lng, 16);
           }
 
-          // 검색 마커 추가
-          if (targetMap._searchMarker) targetMap.removeLayer(targetMap._searchMarker);
-          targetMap._searchMarker = L.marker([lat, lng], {
-            icon: L.divIcon({
-              className: "",
-              html: `<div style="position:relative">
-                <div style="width:20px;height:20px;border-radius:50%;background:#f87171;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div>
-                <div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);white-space:nowrap;background:rgba(30,33,48,0.9);padding:3px 8px;border-radius:4px;font-size:11px;color:#fff;border:1px solid var(--border-color)">${name}</div>
-              </div>`,
-              iconSize: [20, 20],
-              iconAnchor: [10, 10],
-            }),
-          }).addTo(targetMap);
+          // 카카오맵이 아닐 때만 Leaflet 마커 추가
+          if (!targetMap._kakao) {
+            if (targetMap._searchMarker) targetMap.removeLayer(targetMap._searchMarker);
+            targetMap._searchMarker = L.marker([lat, lng], {
+              icon: L.divIcon({
+                className: "",
+                html: `<div style="position:relative">
+                  <div style="width:20px;height:20px;border-radius:50%;background:#f87171;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div>
+                  <div style="position:absolute;top:24px;left:50%;transform:translateX(-50%);white-space:nowrap;background:rgba(30,33,48,0.9);padding:3px 8px;border-radius:4px;font-size:11px;color:#fff;border:1px solid var(--border-color)">${name}</div>
+                </div>`,
+                iconSize: [20, 20],
+                iconAnchor: [10, 10],
+              }),
+            }).addTo(targetMap);
 
-          // 5초 후 마커 제거
-          setTimeout(() => {
-            if (targetMap._searchMarker) {
-              targetMap.removeLayer(targetMap._searchMarker);
-              targetMap._searchMarker = null;
-            }
-          }, 8000);
+            setTimeout(() => {
+              if (targetMap._searchMarker) {
+                targetMap.removeLayer(targetMap._searchMarker);
+                targetMap._searchMarker = null;
+              }
+            }, 8000);
+          } else if (targetMap._kakao?.map) {
+            // 카카오맵 모드: 카카오 마커 추가
+            const kakaoPos = new kakao.maps.LatLng(lat, lng);
+            const overlay = new kakao.maps.CustomOverlay({
+              position: kakaoPos,
+              content: `<div style="background:#f87171;color:#fff;padding:3px 8px;border-radius:4px;font-size:11px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5)">${name}</div>`,
+              yAnchor: 1.5,
+            });
+            overlay.setMap(targetMap._kakao.map);
+            setTimeout(() => overlay.setMap(null), 8000);
+          }
         }
 
         // 검색창 업데이트
