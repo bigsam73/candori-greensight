@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Candori GreenSight - Golf Course NDVI Monitoring Platform
  * Main Application JavaScript
  */
@@ -193,6 +193,35 @@ function removeKakaoOverlay(map) {
     map.getContainer().style.display = "";
     map._kakao = null;
     map.invalidateSize();
+  }
+}
+
+// ============ MAP SAFE MOVE (카카오맵 모드 호환) ============
+function safeMapMove(map, lat, lng, zoom) {
+  if (map._kakao && map._kakao.map) {
+    try {
+      map._kakao.map.setCenter(new kakao.maps.LatLng(lat, lng));
+      if (zoom) map._kakao.map.setLevel(Math.max(1, Math.min(14, 15 - zoom)));
+    } catch (_) {}
+  } else {
+    try { map.setView([lat, lng], zoom || map.getZoom(), { animate: false }); } catch (_) {}
+  }
+}
+
+function safeMapFitBounds(map, bounds, options) {
+  if (map._kakao && map._kakao.map) {
+    try {
+      const center = bounds.getCenter();
+      map._kakao.map.setCenter(new kakao.maps.LatLng(center.lat, center.lng));
+      // 바운드 크기에 따라 줌 조정
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+      const span = Math.max(ne.lat - sw.lat, ne.lng - sw.lng);
+      const level = span > 0.1 ? 7 : span > 0.05 ? 5 : span > 0.01 ? 3 : 2;
+      map._kakao.map.setLevel(level);
+    } catch (_) {}
+  } else {
+    try { map.fitBounds(bounds, options); } catch (_) {}
   }
 }
 
@@ -945,9 +974,14 @@ function initFullMap() {
     const courseId = e.target.value;
     if (!courseId) return;
     state.selectedCourse = state.courses.find((c) => c.id === Number(courseId));
-    // Fly to course
+    // Fly to course (카카오맵 모드일 때는 카카오맵으로 이동)
     if (state.selectedCourse) {
-      state.fullMap.flyTo([state.selectedCourse.lat, state.selectedCourse.lng], 14, { duration: 1.2 });
+      if (state.fullMap._kakao && state.fullMap._kakao.map) {
+        state.fullMap._kakao.map.setCenter(new kakao.maps.LatLng(state.selectedCourse.lat, state.selectedCourse.lng));
+        state.fullMap._kakao.map.setLevel(3);
+      } else {
+        safeMapMove(state.fullMap, state.selectedCourse.lat, state.selectedCourse.lng, 14);
+      }
     }
     loadAvailableDates(courseId);
   });
@@ -1573,9 +1607,9 @@ window.showIndexOverlay = function (courseId, date, indexId, ndviMean) {
   // Zoom
   const allCoords = getAllBoundaryCoords(boundary);
   if (allCoords.length >= 3) {
-    state.fullMap.fitBounds(L.polygon(allCoords).getBounds().pad(0.15));
+    safeMapFitBounds(state.fullMap, L.polygon(allCoords).getBounds().pad(0.15));
   } else {
-    state.fullMap.setView([course.lat, course.lng], 16);
+    safeMapMove(state.fullMap, course.lat, course.lng, 16);
   }
 
   const statusEl = document.getElementById("overlayStatus");
@@ -1666,9 +1700,9 @@ window.showNDVIOverlay = function (courseId, date, satellite, ndviMean) {
   // Zoom to course
   const allCoordsNdvi = getAllBoundaryCoords(course.boundary);
   if (allCoordsNdvi.length >= 3) {
-    state.fullMap.fitBounds(L.polygon(allCoordsNdvi).getBounds().pad(0.15));
+    safeMapFitBounds(state.fullMap, L.polygon(allCoordsNdvi).getBounds().pad(0.15));
   } else {
-    state.fullMap.setView([course.lat, course.lng], 16);
+    safeMapMove(state.fullMap, course.lat, course.lng, 16);
   }
 
   const statusEl = document.getElementById("overlayStatus");
@@ -1818,9 +1852,9 @@ window.showSatelliteImageOverlay = async function (courseId, date, satellite) {
   // Zoom to course
   const satAllCoords = getAllBoundaryCoords(course.boundary);
   if (satAllCoords.length >= 3) {
-    state.fullMap.fitBounds(L.polygon(satAllCoords).getBounds().pad(0.3));
+    safeMapFitBounds(state.fullMap, L.polygon(satAllCoords).getBounds().pad(0.3));
   } else {
-    state.fullMap.setView([course.lat, course.lng], 15);
+    safeMapMove(state.fullMap, course.lat, course.lng, 15);
   }
 
   if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-blue)">Sentinel-2 위성영상 로드 중...</span>`;
@@ -1907,7 +1941,7 @@ window.requestPlanetImage = async function (courseId, date, type) {
       state._mapLegendControl = legend;
 
       state._mapOverlayLayer.addTo(state.fullMap);
-      state.fullMap.fitBounds(imageBounds, { padding: [20, 20] });
+      safeMapFitBounds(state.fullMap, imageBounds, { padding: [20, 20] });
 
       if (statusEl) statusEl.innerHTML = `<span style="color:var(--accent-green)">PlanetScope ${typeLabel} 표시 완료 (3m)</span>`;
     } else {
