@@ -558,6 +558,7 @@ function switchView(viewId) {
     satellites: "위성 데이터 소스",
     report: "리포트",
     "compare-slider": "시간비교 슬라이더",
+    "email-report": "이메일 리포트",
     gdd: "GDD 계산기",
     ontology: "온톨로지",
     terrain: "지형/LiDAR",
@@ -571,6 +572,7 @@ function switchView(viewId) {
   if (viewId === "analysis") initAnalysisView();
   if (viewId === "compare") initCompareView();
   if (viewId === "satellites") loadSatelliteCatalog();
+  if (viewId === "email-report") initEmailReportView();
   if (viewId === "compare-slider") initCompareSliderView();
   if (viewId === "gdd") initGDDView();
   if (viewId === "ontology") initOntologyView();
@@ -4174,6 +4176,63 @@ function calculateArea(coords) {
   const lngScale = 111320 * Math.cos((coords[0][0] * Math.PI) / 180);
   const areaSqm = Math.round(area * latScale * lngScale);
   return areaSqm.toLocaleString();
+}
+
+// ============ EMAIL REPORT (이메일 리포트) ============
+
+window.sendEmailReport = async function () {
+  const email = document.getElementById("reportEmail").value.trim();
+  const cc = document.getElementById("reportEmailCC").value.trim();
+  const statusEl = document.getElementById("emailSendStatus");
+
+  if (!email) { alert("수신 이메일을 입력하세요"); return; }
+
+  const recipients = [email];
+  if (cc) cc.split(",").forEach((e) => { const t = e.trim(); if (t) recipients.push(t); });
+
+  statusEl.innerHTML = '<div class="spinner" style="width:14px;height:14px;display:inline-block;margin-right:6px;vertical-align:middle"></div> 리포트 생성 및 발송 중...';
+
+  try {
+    const result = await API.post("/api/email/send-report", { email: recipients[0] });
+    if (result.ok) {
+      if (result.smtp_configured === false) {
+        statusEl.innerHTML = `<span style="color:var(--accent-orange)">SMTP 미설정 - 리포트 데이터 생성됨 (${result.report?.total_courses}개 골프장)</span>
+          <br><span style="font-size:10px;color:var(--text-muted)">.env에 SMTP 설정 후 발송 가능합니다. 아래 미리보기로 확인하세요.</span>`;
+      } else {
+        statusEl.innerHTML = `<span style="color:var(--accent-green)">발송 완료! (${recipients.join(", ")})</span>`;
+        showToast("이메일 리포트 발송 완료");
+      }
+    }
+  } catch (err) {
+    statusEl.innerHTML = `<span style="color:var(--accent-red)">발송 실패: ${err.message}</span>`;
+  }
+};
+
+window.previewReport = function () {
+  window.open("/api/email/report-preview", "_blank");
+};
+
+// 이메일 뷰 초기화 시 SMTP 상태 확인
+function initEmailReportView() {
+  API.get("/api/email/config").then((config) => {
+    const el = document.getElementById("smtpStatus");
+    if (config.smtp_configured) {
+      el.innerHTML = '<span style="color:var(--accent-green)">✓ SMTP 설정 완료</span>';
+    } else {
+      el.innerHTML = `<span style="color:var(--accent-orange)">SMTP 미설정</span>
+        <div style="margin-top:4px;font-size:11px">.env 파일에 SMTP_HOST, SMTP_USER, SMTP_PASS를 설정하세요
+        <br>Gmail: smtp.gmail.com / Naver: smtp.naver.com</div>`;
+    }
+    if (config.lastSent) {
+      el.innerHTML += `<div style="margin-top:6px;font-size:11px;color:var(--text-muted)">마지막 발송: ${config.lastSent.substring(0, 19).replace("T", " ")}</div>`;
+    }
+    if (config.recipients?.length > 0) {
+      document.getElementById("reportEmail").value = config.recipients[0];
+      if (config.recipients.length > 1) {
+        document.getElementById("reportEmailCC").value = config.recipients.slice(1).join(", ");
+      }
+    }
+  }).catch(() => {});
 }
 
 // ============ COMPARE SLIDER (시간별 비교) ============

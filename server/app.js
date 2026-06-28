@@ -13,6 +13,7 @@ const droneRoutes = require("./routes/droneImages");
 const versionRoutes = require("./routes/versions");
 const zoneRoutes = require("./routes/zones");
 const terrainRoutes = require("./routes/terrain");
+const emailReportRoutes = require("./routes/emailReport");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -67,6 +68,7 @@ app.use("/api/drone", droneRoutes);
 app.use("/api/versions", versionRoutes);
 app.use("/api/zones", zoneRoutes);
 app.use("/api/terrain", terrainRoutes);
+app.use("/api/email", emailReportRoutes);
 
 // Platform configuration endpoint (위성 인증 상태)
 app.get("/api/config", (req, res) => {
@@ -235,18 +237,58 @@ cron.schedule(
   { timezone: "Asia/Seoul" }
 );
 
+// ── 하트비트 모니터링 ──
+let heartbeatCount = 0;
+const startTime = new Date();
+
+setInterval(() => {
+  heartbeatCount++;
+  const uptime = Math.round((Date.now() - startTime.getTime()) / 1000);
+  const mem = process.memoryUsage();
+  const memMB = Math.round(mem.heapUsed / 1024 / 1024);
+  const totalMB = Math.round(mem.heapTotal / 1024 / 1024);
+  console.log(`[Heartbeat #${heartbeatCount}] uptime: ${uptime}s | mem: ${memMB}/${totalMB}MB | pid: ${process.pid}`);
+}, 5 * 60 * 1000); // 5분마다
+
+// 하트비트 API
+app.get("/api/heartbeat", (req, res) => {
+  const uptime = Math.round((Date.now() - startTime.getTime()) / 1000);
+  const mem = process.memoryUsage();
+  res.json({
+    status: "alive",
+    pid: process.pid,
+    uptime_seconds: uptime,
+    uptime_human: `${Math.floor(uptime/3600)}h ${Math.floor((uptime%3600)/60)}m ${uptime%60}s`,
+    memory: {
+      heapUsed: Math.round(mem.heapUsed / 1024 / 1024) + "MB",
+      heapTotal: Math.round(mem.heapTotal / 1024 / 1024) + "MB",
+      rss: Math.round(mem.rss / 1024 / 1024) + "MB",
+    },
+    heartbeat_count: heartbeatCount,
+    started_at: startTime.toISOString(),
+  });
+});
+
+// ── 에러 핸들링 (서버 크래시 방지) ──
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught Exception:", err.message);
+  console.error(err.stack);
+  // 서버를 죽이지 않고 로그만 남김
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[WARN] Unhandled Rejection:", reason);
+});
+
 app.listen(PORT, () => {
   const catalog = satelliteService.getCatalog();
-  const lines = catalog.map(
-    (s) => `   * ${s.name} (${s.resolution}) - ${s.cost}`
-  );
   console.log(`
 ========================================================
    Candori GreenSight - Golf NDVI Monitoring Platform
    Server: http://localhost:${PORT}
-
-   Satellite Sources (${catalog.length}):
-${lines.join("\n")}
+   PID: ${process.pid}
+   Satellites: ${catalog.length}
+   Heartbeat: every 5 minutes
 ========================================================
   `);
 });
