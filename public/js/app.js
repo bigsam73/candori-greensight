@@ -138,13 +138,13 @@ function createKakaoOverlay(map, mapType) {
   const parent = leafletEl.parentElement;
   parent.style.position = "relative";
 
-  // 카카오맵 div: Leaflet과 동일 크기, Leaflet 바로 뒤에
+  // 카카오맵 div: Leaflet과 동일 크기
   const kakaoDiv = document.createElement("div");
-  kakaoDiv.id = "kakaoOverlay";
+  kakaoDiv.id = "kakaoOverlay_" + L.stamp(map);
   kakaoDiv.style.cssText = `
-    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-    width: ${leafletEl.offsetWidth}px;
-    height: ${leafletEl.offsetHeight}px;
+    position: absolute; top: 0; left: 0;
+    width: ${leafletEl.offsetWidth || leafletEl.clientWidth || 800}px;
+    height: ${leafletEl.offsetHeight || leafletEl.clientHeight || 400}px;
     z-index: 1;
   `;
   parent.appendChild(kakaoDiv);
@@ -284,7 +284,7 @@ function removeKakaoOverlay(map) {
     map._kakao.div?.remove();
     map.getContainer().style.display = "";
     map._kakao = null;
-    map.invalidateSize();
+    try { map.invalidateSize(); } catch (_) {}
   }
 }
 
