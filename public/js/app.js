@@ -267,16 +267,29 @@ function drawKakaoCourseOverlays(kakaoMap) {
 
 // 카카오맵에서 골프장 선택 시
 window._kakaoSelectCourse = function (courseId) {
-  const select = document.getElementById("mapCourseSelect");
-  if (select) select.value = courseId;
   state.selectedCourse = state.courses.find((c) => c.id === Number(courseId));
-  if (state.selectedCourse && state.fullMap?._kakao?.map) {
-    state.fullMap._kakao.map.setCenter(
-      new kakao.maps.LatLng(state.selectedCourse.lat, state.selectedCourse.lng)
-    );
-    state.fullMap._kakao.map.setLevel(3);
+
+  // 현재 활성 뷰 확인
+  const activeView = document.querySelector(".view.active");
+  const isMapView = activeView?.id === "view-map";
+
+  if (isMapView) {
+    // 위성지도 뷰: 줌인 + 가용 날짜 로드
+    const select = document.getElementById("mapCourseSelect");
+    if (select) select.value = courseId;
+    if (state.selectedCourse && state.fullMap?._kakao?.map) {
+      state.fullMap._kakao.map.setCenter(
+        new kakao.maps.LatLng(state.selectedCourse.lat, state.selectedCourse.lng)
+      );
+      state.fullMap._kakao.map.setLevel(3);
+    }
+    loadAvailableDates(courseId);
+  } else {
+    // 대시보드 등 다른 뷰: NDVI 분석으로 이동
+    switchView("analysis");
+    document.getElementById("analysisCourseSelect").value = courseId;
+    loadAnalysis(courseId);
   }
-  loadAvailableDates(courseId);
 };
 
 function removeKakaoOverlay(map) {
