@@ -214,6 +214,12 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// 이미지 처리 통계
+app.get("/api/image-stats", (req, res) => {
+  const imageProcessor = require("./services/imageProcessor");
+  res.json(imageProcessor.getStats());
+});
+
 // SPA fallback
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "index.html"));
