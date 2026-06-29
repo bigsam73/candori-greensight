@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <radialGradient id="ballGrad" cx="35%" cy="35%" r="50%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="70%" stop-color="#e8eaf0"/>
+      <stop offset="100%" stop-color="#c0c4d0"/>
+    </radialGradient>
+    <radialGradient id="shine" cx="30%" cy="25%" r="30%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Shadow -->
+  <ellipse cx="32" cy="58" rx="16" ry="4" fill="#1a1d27" opacity="0.3"/>
+  <!-- Golf ball -->
+  <circle cx="32" cy="30" r="22" fill="url(#ballGrad)" stroke="#9ba1b7" stroke-width="0.5"/>
+  <!-- Dimples pattern -->
+  <circle cx="24" cy="22" r="2.5" fill="none" stroke="#c0c4d0" stroke-width="0.6" opacity="0.6"/>
+  <circle cx="32" cy="19" r="2.5" fill="none" stroke="#c0c4d0" stroke-width="0.6" opacity="0.6"/>
+  <circle cx="40" cy="22" r="2.5" fill="none" stroke="#c0c4d0" stroke-width="0.6" opacity="0.6"/>
+  <circle cx="20" cy="30" r="2.5" fill="none" stroke="#c0c4d0" stroke-width="0.6" opacity="0.6"/>
+  <circle cx="28" cy="28" r="2.5" fill="none" stroke="#c0c4d0" stroke-width="0.6" opacity="0.6"/>
+  <circle cx="36" cy="28" r="2.5" fill="none" stroke="#c0c4d0" stroke-width="0.6" opacity="0.6"/>
+  <circle cx="44" cy="30" r="2.5" fill="none" stroke="#c0c4d0" stroke-width="0.6" opacity="0.6"/>
+  <circle cx="24" cy="37" r="2.5" fill="none" stroke="#c0c4d0" stroke-width="0.6" opacity="0.6"/>
+  <circle cx="32" cy="36" r="2.5" fill="none" stroke="#c0c4d0" stroke-width="0.6" opacity="0.6"/>
+  <circle cx="40" cy="37" r="2.5" fill="none" stroke="#c0c4d0" stroke-width="0.6" opacity="0.6"/>
+  <circle cx="28" cy="43" r="2.5" fill="none" stroke="#c0c4d0" stroke-width="0.6" opacity="0.5"/>
+  <circle cx="36" cy="43" r="2.5" fill="none" stroke="#c0c4d0" stroke-width="0.6" opacity="0.5"/>
+  <!-- Shine -->
+  <circle cx="32" cy="30" r="22" fill="url(#shine)"/>
+  <!-- Green accent ring -->
+  <circle cx="32" cy="30" r="23" fill="none" stroke="#4ade80" stroke-width="1.5" opacity="0.6"/>
+</svg>

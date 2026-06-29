@@ -1,5 +1,5 @@
 /* ============================================
-   Candori GreenSight - Golf NDVI Monitoring Platform
+   SONO CONTROL - 골프장 통합 관제 플랫폼
    DroneDeploy-inspired design system
    ============================================ */
 
@@ -118,7 +118,7 @@ body {
   line-height: 1.2;
 }
 
-.logo-candori {
+.logo-brand {
   color: var(--accent-green);
   font-weight: 800;
 }

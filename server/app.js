@@ -290,7 +290,7 @@ app.listen(PORT, () => {
   const catalog = satelliteService.getCatalog();
   console.log(`
 ========================================================
-   Candori GreenSight - Golf NDVI Monitoring Platform
+   SONO CONTROL - 골프장 통합 관제 플랫폼
    Server: http://localhost:${PORT}
    PID: ${process.pid}
    Satellites: ${catalog.length}

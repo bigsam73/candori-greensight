@@ -178,7 +178,7 @@ router.get("/export", (req, res) => {
   const database = db.getDb();
   const exportData = {
     _exported_at: new Date().toISOString(),
-    _platform: "Candori GreenSight",
+    _platform: "SONO CONTROL",
     golf_courses: database._data.golf_courses.map((c) => ({
       id: c.id, name: c.name, name_en: c.name_en, lat: c.lat, lng: c.lng,
       address: c.address, region: c.region, holes: c.holes,
@@ -186,7 +186,7 @@ router.get("/export", (req, res) => {
     })),
   };
   res.setHeader("Content-Type", "application/json");
-  res.setHeader("Content-Disposition", `attachment; filename="greensight_export_${new Date().toISOString().split("T")[0]}.json"`);
+  res.setHeader("Content-Disposition", `attachment; filename="sonocontrol_export_${new Date().toISOString().split("T")[0]}.json"`);
   res.json(exportData);
 });
 

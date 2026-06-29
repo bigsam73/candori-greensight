@@ -1,5 +1,5 @@
 /**
- * Candori GreenSight - Golf Course NDVI Monitoring Platform
+ * SONO CONTROL - 골프장 통합 관제 플랫폼
  * Main Application JavaScript
  */
 
@@ -398,7 +398,7 @@ async function searchAddress(query) {
     const encoded = encodeURIComponent(query);
     const response = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&countrycodes=kr&limit=8&addressdetails=1&accept-language=ko`,
-      { headers: { "User-Agent": "CandoriGreenSight/1.0" } }
+      { headers: { "User-Agent": "SonoControl/1.0" } }
     );
     const data = await response.json();
 
@@ -3127,7 +3127,7 @@ async function generateReport() {
               <div style="font-size:12px;color:var(--text-muted);margin-top:4px">${course.name_en || ""} | ${now} 기준 | 최근 ${period}일</div>
             </div>
             <div style="text-align:right">
-              <div style="font-size:10px;color:var(--text-muted)">Candori GreenSight</div>
+              <div style="font-size:10px;color:var(--text-muted)">SONO CONTROL</div>
               <div style="font-size:10px;color:var(--text-muted)">위성기반 NDVI 모니터링</div>
             </div>
           </div>
@@ -3224,7 +3224,7 @@ async function generateReport() {
         </div>
 
         <div style="padding:16px;text-align:center;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border-color)">
-          Candori GreenSight | 위성 데이터: ESA Copernicus Sentinel-2 / NASA Landsat / MODIS | ${now}
+          SONO CONTROL | 위성 데이터: ESA Copernicus Sentinel-2 / NASA Landsat / MODIS | ${now}
         </div>
       </div>
 

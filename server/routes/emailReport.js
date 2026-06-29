@@ -79,9 +79,9 @@ router.post("/send-report", async (req, res) => {
     });
 
     await transporter.sendMail({
-      from: `"Candori GreenSight" <${smtpFrom}>`,
+      from: `"SONO CONTROL" <${smtpFrom}>`,
       to: recipients.join(","),
-      subject: `[GreenSight] 골프장 NDVI 일일 리포트 - ${new Date().toLocaleDateString("ko-KR")}`,
+      subject: `[SONO CONTROL] 골프장 NDVI 일일 리포트 - ${new Date().toLocaleDateString("ko-KR")}`,
       html: html,
     });
 
@@ -216,7 +216,7 @@ function buildReportHTML(report) {
 <body>
 <div class="container">
   <div class="header">
-    <h1>🌿 Candori GreenSight 일일 리포트</h1>
+    <h1>⛳ SONO CONTROL 일일 리포트</h1>
     <p>${report.date} 기준 | ${report.total_courses}개 골프장 | 생성: ${new Date().toLocaleString("ko-KR")}</p>
   </div>
 
@@ -272,7 +272,7 @@ function buildReportHTML(report) {
   </div>
 
   <div class="footer">
-    Candori GreenSight | 위성 기반 골프장 NDVI 모니터링 플랫폼<br>
+    SONO CONTROL | 골프장 통합 관제 플랫폼<br>
     이 리포트는 자동으로 생성되었습니다 | ${new Date().toISOString()}
   </div>
 </div>
