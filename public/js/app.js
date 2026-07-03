@@ -4711,15 +4711,57 @@ const NLL_WEST = [
 
 let dmzMaps = [];
 let dmzFullMap = null;
+let dmzSyncing = false;
 
 function initDMZWatch() {
   const regionSelect = document.getElementById("dmzRegion");
   const satSelect = document.getElementById("dmzSatSource");
 
-  regionSelect.addEventListener("change", () => renderDMZWatch());
-  satSelect.addEventListener("change", () => renderDMZWatch());
+  if (!regionSelect._bound) {
+    regionSelect.addEventListener("change", () => renderDMZWatch());
+    satSelect.addEventListener("change", () => renderDMZWatch());
+    regionSelect._bound = true;
+  }
 
   renderDMZWatch();
+}
+
+function getDMZTileLayer(satSource, monthLabel) {
+  // monthLabel: "2026-07"
+  const year = monthLabel.substring(0, 4);
+  const month = monthLabel.substring(5, 7);
+  const dateFrom = `${monthLabel}-01`;
+  const dateTo = `${monthLabel}-28`;
+
+  switch (satSource) {
+    case "sentinel2":
+      // Sentinel-2 WMS (Copernicus, 무료, 날짜별)
+      return L.tileLayer.wms(
+        "https://sh.dataspace.copernicus.eu/ogc/wms/ed64bf38-575d-4fee-83d0-59bd0c6f80b3", {
+          layers: "TRUE-COLOR-S2L2A",
+          format: "image/png",
+          transparent: true,
+          time: `${dateFrom}/${dateTo}`,
+          maxcc: 30,
+          maxZoom: 18,
+          attribution: `Sentinel-2 ${monthLabel}`,
+        });
+    case "planet":
+      // Planet Basemaps (월간 모자이크, API Key 필요)
+      const mosaicName = `global_monthly_${year}_${month}_mosaic`;
+      const apiKey = "PLAK173b27d00146483c8db27f7f1ec1b399";
+      return L.tileLayer(
+        `https://tiles.planet.com/basemaps/v1/planet-tiles/${mosaicName}/gmap/{z}/{x}/{y}.png?api_key=${apiKey}`, {
+          maxZoom: 20,
+          attribution: `Planet ${monthLabel}`,
+        });
+    case "esri-clarity":
+      return L.tileLayer("https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 20 });
+    case "vworld-sat":
+      return L.tileLayer("https://xdworld.vworld.kr/2d/Satellite/service/{z}/{x}/{y}.jpeg", { maxZoom: 19 });
+    default: // google-sat
+      return L.tileLayer("https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", { maxZoom: 21 });
+  }
 }
 
 function renderDMZWatch() {
@@ -4727,7 +4769,6 @@ function renderDMZWatch() {
   const satSource = document.getElementById("dmzSatSource").value;
   const regionInfo = DMZ_REGIONS[region] || DMZ_REGIONS["all"];
 
-  // 6개월 지도 그리드 생성
   const grid = document.getElementById("dmzMapGrid");
   const now = new Date();
   const months = [];
@@ -4735,8 +4776,6 @@ function renderDMZWatch() {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     months.push({
       label: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
-      year: d.getFullYear(),
-      month: d.getMonth() + 1,
     });
   }
 
@@ -4744,73 +4783,96 @@ function renderDMZWatch() {
   dmzMaps.forEach((m) => { try { m.remove(); } catch (_) {} });
   dmzMaps = [];
 
+  // Sentinel-2/Planet은 날짜별 영상 → 각 월 다른 타일
+  const isDateBased = (satSource === "sentinel2" || satSource === "planet");
+
   grid.innerHTML = months.map((m, i) => `
     <div style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden">
       <div style="padding:6px 10px;background:var(--bg-card);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center">
-        <span style="font-weight:600;font-size:12px">${m.label}</span>
-        <span style="font-size:10px;color:var(--text-muted)">${regionInfo.name}</span>
+        <span style="font-weight:600;font-size:12px;color:${isDateBased ? "#4ade80" : "var(--text-primary)"}">${m.label}</span>
+        <span style="font-size:9px;color:var(--text-muted)">${isDateBased ? (satSource === "sentinel2" ? "Sentinel-2" : "Planet 4.77m") : satSource}</span>
       </div>
-      <div id="dmzMap_${i}" style="height:220px"></div>
+      <div id="dmzMap_${i}" style="height:280px"></div>
     </div>
   `).join("");
 
-  // 타일 URL 선택
-  const tileUrls = {
-    "google-sat": "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-    "esri-clarity": "https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    "vworld-sat": "https://xdworld.vworld.kr/2d/Satellite/service/{z}/{x}/{y}.jpeg",
-  };
-  const tileUrl = tileUrls[satSource] || tileUrls["google-sat"];
-
-  // 6개 미니 지도 생성
   setTimeout(() => {
     months.forEach((m, i) => {
       const mapEl = document.getElementById(`dmzMap_${i}`);
       if (!mapEl) return;
 
       const map = L.map(mapEl, {
-        zoomControl: false,
+        zoomControl: i === 0, // 첫 번째만 줌 컨트롤
         attributionControl: false,
       }).setView(regionInfo.center, regionInfo.zoom);
 
-      L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(map);
+      // 위성 타일 (날짜별 또는 공통)
+      getDMZTileLayer(satSource, m.label).addTo(map);
 
-      // MDL 라인 (빨간 점선)
-      L.polyline(MDL_LINE, {
-        color: "#f87171", weight: 2, dashArray: "8,4", opacity: 0.9,
-      }).addTo(map);
+      // MDL + NLL + DMZ 오버레이
+      addDMZOverlays(map);
 
-      // NLL 서해 (주황 점선)
-      L.polyline(NLL_WEST, {
-        color: "#fb923c", weight: 2, dashArray: "6,6", opacity: 0.8,
-      }).addTo(map);
-
-      // DMZ 영역 (반투명)
-      const dmzNorth = MDL_LINE.map(([lat, lng]) => [lat + 0.018, lng]);
-      const dmzSouth = MDL_LINE.map(([lat, lng]) => [lat - 0.018, lng]);
-      const dmzPolygon = [...dmzSouth, ...dmzNorth.reverse()];
-      L.polygon(dmzPolygon, {
-        color: "#f87171", weight: 0, fillColor: "#f87171", fillOpacity: 0.08,
-      }).addTo(map);
-
-      // 월 라벨
+      // 월 + 위성 라벨
       const label = L.control({ position: "bottomleft" });
       label.onAdd = () => {
         const div = L.DomUtil.create("div");
-        div.innerHTML = `<div style="background:rgba(30,33,48,0.85);color:#f87171;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700">${m.label}</div>`;
+        div.innerHTML = `<div style="background:rgba(30,33,48,0.9);color:#f87171;padding:4px 10px;border-radius:4px;font-size:11px;font-weight:700;border:1px solid rgba(248,113,113,0.3)">
+          <span class="material-icons-outlined" style="font-size:12px;vertical-align:middle">satellite_alt</span>
+          ${m.label} ${isDateBased ? "| " + (satSource === "sentinel2" ? "Sentinel-2 10m" : "Planet 4.77m") : ""}
+        </div>`;
         return div;
       };
       label.addTo(map);
+
+      // ── 지도 동기화 ──
+      map.on("moveend", () => syncDMZMaps(i));
+      map.on("zoomend", () => syncDMZMaps(i));
 
       dmzMaps.push(map);
     });
 
     // 전체 지도 생성
-    renderDMZFullMap(regionInfo, tileUrl, months);
+    renderDMZFullMap(regionInfo, satSource, months);
   }, 200);
 }
 
-function renderDMZFullMap(regionInfo, tileUrl, months) {
+function addDMZOverlays(map) {
+  L.polyline(MDL_LINE, { color: "#f87171", weight: 2, dashArray: "8,4", opacity: 0.9 }).addTo(map);
+  L.polyline(NLL_WEST, { color: "#fb923c", weight: 2, dashArray: "6,6", opacity: 0.8 }).addTo(map);
+  const dmzNorth = MDL_LINE.map(([lat, lng]) => [lat + 0.018, lng]);
+  const dmzSouth = MDL_LINE.map(([lat, lng]) => [lat - 0.018, lng]);
+  L.polygon([...dmzSouth, ...dmzNorth.reverse()], {
+    color: "#f87171", weight: 0, fillColor: "#f87171", fillOpacity: 0.08,
+  }).addTo(map);
+}
+
+function syncDMZMaps(sourceIdx) {
+  if (dmzSyncing) return;
+  const syncEnabled = document.getElementById("dmzSyncMaps")?.checked;
+  if (!syncEnabled) return;
+
+  dmzSyncing = true;
+  const source = dmzMaps[sourceIdx];
+  if (!source) { dmzSyncing = false; return; }
+
+  const center = source.getCenter();
+  const zoom = source.getZoom();
+
+  dmzMaps.forEach((map, i) => {
+    if (i !== sourceIdx) {
+      map.setView(center, zoom, { animate: false });
+    }
+  });
+
+  // 전체 지도도 동기화
+  if (dmzFullMap) {
+    dmzFullMap.setView(center, zoom, { animate: false });
+  }
+
+  setTimeout(() => { dmzSyncing = false; }, 50);
+}
+
+function renderDMZFullMap(regionInfo, satSource, months) {
   if (dmzFullMap) { dmzFullMap.remove(); dmzFullMap = null; }
 
   const mapEl = document.getElementById("dmzFullMap");
@@ -4821,7 +4883,22 @@ function renderDMZFullMap(regionInfo, tileUrl, months) {
     attributionControl: false,
   }).setView(regionInfo.center, regionInfo.zoom);
 
-  L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(dmzFullMap);
+  // 최신 월 타일 사용
+  const latestMonth = months[months.length - 1]?.label || new Date().toISOString().substring(0, 7);
+  getDMZTileLayer(satSource, latestMonth).addTo(dmzFullMap);
+
+  // 전체 지도 동기화
+  dmzFullMap.on("moveend", () => {
+    if (dmzSyncing) return;
+    dmzSyncing = true;
+    const c = dmzFullMap.getCenter();
+    const z = dmzFullMap.getZoom();
+    const syncEnabled = document.getElementById("dmzSyncMaps")?.checked;
+    if (syncEnabled) {
+      dmzMaps.forEach((m) => m.setView(c, z, { animate: false }));
+    }
+    setTimeout(() => { dmzSyncing = false; }, 50);
+  });
 
   // MDL 라인
   const mdlLine = L.polyline(MDL_LINE, {

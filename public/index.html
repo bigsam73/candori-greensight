@@ -758,10 +758,15 @@
             <option value="east-nll">동해 NLL</option>
           </select>
           <select id="dmzSatSource" class="select-md">
+            <option value="sentinel2">Sentinel-2 (10m, 월별영상)</option>
+            <option value="planet">Planet Basemaps (4.77m, 월별)</option>
             <option value="google-sat">Google 위성</option>
             <option value="esri-clarity">ESRI Clarity (0.3m)</option>
             <option value="vworld-sat">VWorld 위성</option>
           </select>
+          <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="dmzSyncMaps" checked> 지도 동기화
+          </label>
         </div>
       </div>
       <div id="dmzContent">
