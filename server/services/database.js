@@ -630,74 +630,45 @@ function generateYearlyNDVI(courseId) {
   const today = new Date();
   let count = 0;
 
-  // 위성별 관측 패턴 정의 (현실적 주기 시뮬레이션)
-  const satellites = [
-    { name: "Sentinel-2", weight: 3, resolution: "10m" },   // 5일 주기 → 가장 빈번
-    { name: "Landsat-8",  weight: 1, resolution: "30m" },   // 16일 주기
-    { name: "Landsat-9",  weight: 1, resolution: "30m" },   // 16일 주기 (8과 교차)
-    { name: "HLS-Sentinel", weight: 1, resolution: "30m" }, // 2~3일 주기
-    { name: "MODIS",      weight: 1, resolution: "250m" },  // 16일 합성
-  ];
+  // 월간 합성(Monthly Composite) - 한 달에 1개 레코드
+  // 각 월의 맑은 날 관측값을 합성한 대표 NDVI
+  const satellites = ["Sentinel-2", "Landsat-8", "Sentinel-2", "HLS-Sentinel", "Sentinel-2",
+    "Sentinel-2", "Sentinel-2", "Sentinel-2", "Sentinel-2", "Landsat-9", "Sentinel-2", "MODIS"];
 
-  for (let d = 0; d < 365; d++) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - d);
+  for (let m = 0; m < 12; m++) {
+    const date = new Date(today.getFullYear(), today.getMonth() - m, 15); // 월 중순 기준
     const dateStr = date.toISOString().split("T")[0];
     const month = date.getMonth();
-    const dayOfYear = d;
 
     // 계절별 기본 NDVI (한국 기후 기반)
-    // 봄(3~5): 식생 성장기, 여름(6~8): 최성기, 가을(9~11): 쇠퇴, 겨울(12~2): 휴면
     let baseLine;
     if (month >= 2 && month <= 4) {
-      // 봄: 점진적 상승 (0.35 → 0.70)
       const springProgress = (month - 2) / 3;
       baseLine = 0.35 + springProgress * 0.35;
     } else if (month >= 5 && month <= 7) {
-      // 여름: 최고점 유지 (0.70 ~ 0.85)
       baseLine = 0.75 + Math.sin(((month - 5) / 3) * Math.PI) * 0.1;
     } else if (month >= 8 && month <= 10) {
-      // 가을: 점진적 하락 (0.70 → 0.35)
       const fallProgress = (month - 8) / 3;
       baseLine = 0.70 - fallProgress * 0.35;
     } else {
-      // 겨울: 최저 (0.20 ~ 0.35)
       baseLine = 0.25 + Math.random() * 0.1;
     }
 
-    // 구름으로 인한 관측 불가 시뮬레이션 (여름 장마철 빈도 높음)
-    const cloudProbability = (month >= 6 && month <= 7) ? 0.5 : 0.2;
-    if (Math.random() < cloudProbability) continue; // 구름으로 관측 불가
-
-    // 위성 선택 (가중치 기반)
-    let satellite;
-    const totalWeight = satellites.reduce((s, sat) => s + sat.weight, 0);
-    let roll = Math.random() * totalWeight;
-    for (const sat of satellites) {
-      roll -= sat.weight;
-      if (roll <= 0) { satellite = sat.name; break; }
-    }
-    if (!satellite) satellite = "Sentinel-2";
-
-    // 각 위성 관측 주기 시뮬레이션
-    if (satellite === "Sentinel-2" && d % 5 > 2) continue;      // ~5일 주기
-    if (satellite === "Landsat-8" && d % 16 !== 0) continue;     // 16일 주기
-    if (satellite === "Landsat-9" && d % 16 !== 8) continue;     // 16일 주기 (8과 8일 오프셋)
-    if (satellite === "MODIS" && d % 16 > 0) continue;           // 16일 합성
-
-    // NDVI 변동성 추가
-    const weatherNoise = (Math.random() - 0.5) * 0.12;
-    const managementBonus = Math.random() * 0.05;  // 관리 상태
+    // 월간 합성: 여러 날 관측 평균 → 노이즈 감소, 안정적 값
+    const weatherNoise = (Math.random() - 0.5) * 0.08;
+    const managementBonus = Math.random() * 0.04;
     const ndviMean = Math.max(0.08, Math.min(0.95, baseLine + weatherNoise + managementBonus));
-    const ndviStd = 0.04 + Math.random() * 0.06;
-    const ndviMin = Math.max(0.05, ndviMean - ndviStd * 2 - Math.random() * 0.08);
-    const ndviMax = Math.min(0.98, ndviMean + ndviStd * 1.5 + Math.random() * 0.06);
-    const cloudCover = Math.random() * 30;
+    const ndviStd = 0.03 + Math.random() * 0.04;
+    const ndviMin = Math.max(0.05, ndviMean - ndviStd * 2);
+    const ndviMax = Math.min(0.98, ndviMean + ndviStd * 1.5);
+    const cloudCover = (month >= 6 && month <= 7) ? 30 + Math.random() * 30 : Math.random() * 20;
+
+    const satellite = satellites[m % satellites.length];
 
     const record = {
       course_id: courseId,
       date: dateStr,
-      satellite,
+      satellite: satellite + " (월간합성)",
       ndvi_mean: Math.round(ndviMean * 1000) / 1000,
       ndvi_min:  Math.round(ndviMin * 1000) / 1000,
       ndvi_max:  Math.round(ndviMax * 1000) / 1000,
