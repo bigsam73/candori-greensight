@@ -560,6 +560,7 @@ function switchView(viewId) {
     "compare-slider": "시간비교 슬라이더",
     "email-report": "이메일 리포트",
     gdd: "GDD 계산기",
+    "dmz-watch": "DMZ 감시",
     ontology: "온톨로지",
     terrain: "지형/LiDAR",
     versions: "버전 관리",
@@ -575,6 +576,7 @@ function switchView(viewId) {
   if (viewId === "email-report") initEmailReportView();
   if (viewId === "compare-slider") initCompareSliderView();
   if (viewId === "gdd") initGDDView();
+  if (viewId === "dmz-watch") initDMZWatch();
   if (viewId === "ontology") initOntologyView();
   if (viewId === "terrain") initTerrainView();
   if (viewId === "versions") loadVersions();
@@ -4669,6 +4671,236 @@ async function loadGDD(courseId) {
   } catch (err) {
     content.innerHTML = `<div style="color:var(--accent-red);text-align:center;padding:40px">${err.message}</div>`;
   }
+}
+
+// ============ DMZ WATCH (DMZ/NLL 감시) ============
+
+const DMZ_REGIONS = {
+  "all": { center: [38.3, 127.5], zoom: 8, name: "전체 38선" },
+  "west-nll": { center: [37.7, 125.7], zoom: 10, name: "서해 NLL (백령도~연평도)" },
+  "west-dmz": { center: [37.9, 126.7], zoom: 11, name: "서부 DMZ (파주~김포)" },
+  "central-dmz": { center: [38.3, 127.5], zoom: 11, name: "중부 DMZ (철원~화천)" },
+  "east-dmz": { center: [38.4, 128.2], zoom: 11, name: "동부 DMZ (양구~고성)" },
+  "east-nll": { center: [38.6, 128.9], zoom: 10, name: "동해 NLL" },
+};
+
+// MDL(군사분계선) 좌표 (서→동, 주요 포인트)
+const MDL_LINE = [
+  [37.7520, 126.0800], // 서해 시작 (한강 하구)
+  [37.8400, 126.6800], // 파주
+  [37.9100, 126.8200], // 장단
+  [38.0500, 127.0500], // 연천
+  [38.2000, 127.2800], // 철원
+  [38.3000, 127.5000], // 김화
+  [38.3500, 127.7500], // 화천
+  [38.4500, 128.0500], // 양구
+  [38.5000, 128.2500], // 인제
+  [38.5500, 128.5000], // 간성
+  [38.6000, 128.6800], // 고성 (동해안)
+];
+
+// NLL 서해 좌표
+const NLL_WEST = [
+  [37.6920, 124.6100],
+  [37.7500, 125.1000],
+  [37.7350, 125.4500],
+  [37.6800, 125.7800],
+  [37.6500, 126.0500],
+  [37.7520, 126.0800],
+];
+
+let dmzMaps = [];
+let dmzFullMap = null;
+
+function initDMZWatch() {
+  const regionSelect = document.getElementById("dmzRegion");
+  const satSelect = document.getElementById("dmzSatSource");
+
+  regionSelect.addEventListener("change", () => renderDMZWatch());
+  satSelect.addEventListener("change", () => renderDMZWatch());
+
+  renderDMZWatch();
+}
+
+function renderDMZWatch() {
+  const region = document.getElementById("dmzRegion").value;
+  const satSource = document.getElementById("dmzSatSource").value;
+  const regionInfo = DMZ_REGIONS[region] || DMZ_REGIONS["all"];
+
+  // 6개월 지도 그리드 생성
+  const grid = document.getElementById("dmzMapGrid");
+  const now = new Date();
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      label: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      year: d.getFullYear(),
+      month: d.getMonth() + 1,
+    });
+  }
+
+  // 기존 지도 정리
+  dmzMaps.forEach((m) => { try { m.remove(); } catch (_) {} });
+  dmzMaps = [];
+
+  grid.innerHTML = months.map((m, i) => `
+    <div style="border:1px solid var(--border-color);border-radius:8px;overflow:hidden">
+      <div style="padding:6px 10px;background:var(--bg-card);border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:600;font-size:12px">${m.label}</span>
+        <span style="font-size:10px;color:var(--text-muted)">${regionInfo.name}</span>
+      </div>
+      <div id="dmzMap_${i}" style="height:220px"></div>
+    </div>
+  `).join("");
+
+  // 타일 URL 선택
+  const tileUrls = {
+    "google-sat": "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+    "esri-clarity": "https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    "vworld-sat": "https://xdworld.vworld.kr/2d/Satellite/service/{z}/{x}/{y}.jpeg",
+  };
+  const tileUrl = tileUrls[satSource] || tileUrls["google-sat"];
+
+  // 6개 미니 지도 생성
+  setTimeout(() => {
+    months.forEach((m, i) => {
+      const mapEl = document.getElementById(`dmzMap_${i}`);
+      if (!mapEl) return;
+
+      const map = L.map(mapEl, {
+        zoomControl: false,
+        attributionControl: false,
+      }).setView(regionInfo.center, regionInfo.zoom);
+
+      L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(map);
+
+      // MDL 라인 (빨간 점선)
+      L.polyline(MDL_LINE, {
+        color: "#f87171", weight: 2, dashArray: "8,4", opacity: 0.9,
+      }).addTo(map);
+
+      // NLL 서해 (주황 점선)
+      L.polyline(NLL_WEST, {
+        color: "#fb923c", weight: 2, dashArray: "6,6", opacity: 0.8,
+      }).addTo(map);
+
+      // DMZ 영역 (반투명)
+      const dmzNorth = MDL_LINE.map(([lat, lng]) => [lat + 0.018, lng]);
+      const dmzSouth = MDL_LINE.map(([lat, lng]) => [lat - 0.018, lng]);
+      const dmzPolygon = [...dmzSouth, ...dmzNorth.reverse()];
+      L.polygon(dmzPolygon, {
+        color: "#f87171", weight: 0, fillColor: "#f87171", fillOpacity: 0.08,
+      }).addTo(map);
+
+      // 월 라벨
+      const label = L.control({ position: "bottomleft" });
+      label.onAdd = () => {
+        const div = L.DomUtil.create("div");
+        div.innerHTML = `<div style="background:rgba(30,33,48,0.85);color:#f87171;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700">${m.label}</div>`;
+        return div;
+      };
+      label.addTo(map);
+
+      dmzMaps.push(map);
+    });
+
+    // 전체 지도 생성
+    renderDMZFullMap(regionInfo, tileUrl, months);
+  }, 200);
+}
+
+function renderDMZFullMap(regionInfo, tileUrl, months) {
+  if (dmzFullMap) { dmzFullMap.remove(); dmzFullMap = null; }
+
+  const mapEl = document.getElementById("dmzFullMap");
+  if (!mapEl) return;
+
+  dmzFullMap = L.map(mapEl, {
+    zoomControl: true,
+    attributionControl: false,
+  }).setView(regionInfo.center, regionInfo.zoom);
+
+  L.tileLayer(tileUrl, { maxZoom: 19 }).addTo(dmzFullMap);
+
+  // MDL 라인
+  const mdlLine = L.polyline(MDL_LINE, {
+    color: "#f87171", weight: 3, dashArray: "10,5", opacity: 0.9,
+  }).addTo(dmzFullMap);
+  mdlLine.bindTooltip("군사분계선 (MDL)", { permanent: false });
+
+  // NLL 서해
+  const nllLine = L.polyline(NLL_WEST, {
+    color: "#fb923c", weight: 3, dashArray: "8,6", opacity: 0.9,
+  }).addTo(dmzFullMap);
+  nllLine.bindTooltip("서해 북방한계선 (NLL)", { permanent: false });
+
+  // DMZ 영역
+  const dmzNorth = MDL_LINE.map(([lat, lng]) => [lat + 0.018, lng]);
+  const dmzSouth = MDL_LINE.map(([lat, lng]) => [lat - 0.018, lng]);
+  L.polygon([...dmzSouth, ...dmzNorth.reverse()], {
+    color: "#f87171", weight: 1, fillColor: "#f87171", fillOpacity: 0.1, dashArray: "4,4",
+  }).addTo(dmzFullMap).bindTooltip("비무장지대 (DMZ)", { permanent: false });
+
+  // 주요 거점 마커
+  const markers = [
+    { pos: [37.9523, 126.6837], name: "판문점 JSA", icon: "flag" },
+    { pos: [38.2050, 127.2800], name: "철원 GP", icon: "military_tech" },
+    { pos: [38.5870, 128.6300], name: "고성 통일전망대", icon: "visibility" },
+    { pos: [37.6713, 125.6810], name: "백령도", icon: "anchor" },
+    { pos: [37.6284, 125.4100], name: "연평도", icon: "anchor" },
+    { pos: [37.7500, 126.0200], name: "강화도 평화전망대", icon: "visibility" },
+    { pos: [38.1200, 127.1300], name: "연천 태풍전망대", icon: "visibility" },
+    { pos: [38.4600, 128.0900], name: "양구 을지전망대", icon: "visibility" },
+  ];
+
+  markers.forEach((m) => {
+    L.marker(m.pos, {
+      icon: L.divIcon({
+        className: "",
+        html: `<div style="display:flex;align-items:center;gap:4px">
+          <div style="width:20px;height:20px;border-radius:50%;background:#f87171;border:2px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4)">
+            <span class="material-icons-outlined" style="font-size:12px;color:#fff">${m.icon}</span>
+          </div>
+          <div style="background:rgba(30,33,48,0.9);color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;white-space:nowrap;border:1px solid rgba(248,113,113,0.3)">${m.name}</div>
+        </div>`,
+        iconSize: [0, 0],
+      }),
+    }).addTo(dmzFullMap);
+  });
+
+  // 범례
+  const legend = L.control({ position: "bottomright" });
+  legend.onAdd = () => {
+    const div = L.DomUtil.create("div");
+    div.innerHTML = `
+      <div style="background:rgba(30,33,48,0.92);padding:10px;border-radius:8px;border:1px solid var(--border-color);font-size:10px;color:#e8eaf0">
+        <div style="font-weight:700;color:#f87171;margin-bottom:6px">DMZ/NLL 감시</div>
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+          <div style="width:20px;height:2px;background:#f87171;border-top:2px dashed #f87171"></div>
+          <span>군사분계선 (MDL)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+          <div style="width:20px;height:2px;background:#fb923c;border-top:2px dashed #fb923c"></div>
+          <span>북방한계선 (NLL)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+          <div style="width:20px;height:8px;background:rgba(248,113,113,0.2);border:1px solid rgba(248,113,113,0.4)"></div>
+          <span>비무장지대 (DMZ)</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <div style="width:10px;height:10px;border-radius:50%;background:#f87171"></div>
+          <span>주요 거점</span>
+        </div>
+      </div>
+    `;
+    return div;
+  };
+  legend.addTo(dmzFullMap);
+
+  // 월 선택기 채우기
+  const monthSelect = document.getElementById("dmzMonthSelect");
+  monthSelect.innerHTML = months.map((m) => `<option value="${m.label}">${m.label}</option>`).join("");
 }
 
 // ============ ONTOLOGY (골프장 온톨로지) ============

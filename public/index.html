@@ -111,6 +111,10 @@
         <span class="material-icons-outlined">terrain</span>
         <span>지형/LiDAR</span>
       </a>
+      <a href="#" class="nav-item" data-view="dmz-watch">
+        <span class="material-icons-outlined" style="color:#f87171">shield</span>
+        <span style="color:#f87171">DMZ 감시</span>
+      </a>
       <a href="#" class="nav-item" data-view="versions">
         <span class="material-icons-outlined">history</span>
         <span>버전 관리</span>
@@ -736,6 +740,53 @@
         <div style="text-align:center;padding:60px;color:var(--text-muted)">
           <span class="material-icons-outlined" style="font-size:64px;display:block;margin-bottom:8px">terrain</span>
           <p>분석할 골프장을 선택하세요</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- DMZ Watch View -->
+    <div class="view" id="view-dmz-watch">
+      <div class="view-header">
+        <h2 style="color:#f87171"><span class="material-icons-outlined" style="vertical-align:middle;margin-right:4px">shield</span>DMZ/NLL 감시</h2>
+        <div class="header-controls">
+          <select id="dmzRegion" class="select-md">
+            <option value="all">전체 38선</option>
+            <option value="west-nll">서해 NLL (백령도~연평도)</option>
+            <option value="west-dmz">서부 DMZ (파주~김포)</option>
+            <option value="central-dmz">중부 DMZ (철원~화천)</option>
+            <option value="east-dmz">동부 DMZ (양구~고성)</option>
+            <option value="east-nll">동해 NLL</option>
+          </select>
+          <select id="dmzSatSource" class="select-md">
+            <option value="google-sat">Google 위성</option>
+            <option value="esri-clarity">ESRI Clarity (0.3m)</option>
+            <option value="vworld-sat">VWorld 위성</option>
+          </select>
+        </div>
+      </div>
+      <div id="dmzContent">
+        <!-- 6개월 비교 그리드 -->
+        <div class="card" style="margin-bottom:16px;padding:14px 16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span class="material-icons-outlined" style="color:#f87171">warning</span>
+            <span style="font-size:13px;font-weight:600;color:#f87171">북방한계선(NLL) / 군사분계선(MDL) 최근 6개월 위성영상 비교</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
+            각 월의 위성영상을 비교하여 철책 설치, 지형 변화, 군사 시설 변동을 확인합니다.
+          </div>
+          <div id="dmzMapGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            <!-- JS에서 6개월 지도 생성 -->
+          </div>
+        </div>
+        <!-- 전체 지도 -->
+        <div class="card">
+          <div class="card-header">
+            <h3>DMZ 전체 현황</h3>
+            <div class="card-controls">
+              <select id="dmzMonthSelect" class="select-sm"></select>
+            </div>
+          </div>
+          <div id="dmzFullMap" style="height:500px"></div>
         </div>
       </div>
     </div>
