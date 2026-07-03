@@ -758,8 +758,8 @@
             <option value="east-nll">동해 NLL</option>
           </select>
           <select id="dmzSatSource" class="select-md">
+            <option value="planet" selected>Planet Basemaps (4.77m, 월별)</option>
             <option value="sentinel2">Sentinel-2 (10m, 월별영상)</option>
-            <option value="planet">Planet Basemaps (4.77m, 월별)</option>
             <option value="google-sat">Google 위성</option>
             <option value="esri-clarity">ESRI Clarity (0.3m)</option>
             <option value="vworld-sat">VWorld 위성</option>
@@ -774,12 +774,15 @@
         <div class="card" style="margin-bottom:16px;padding:14px 16px">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
             <span class="material-icons-outlined" style="color:#f87171">warning</span>
-            <span style="font-size:13px;font-weight:600;color:#f87171">북방한계선(NLL) / 군사분계선(MDL) 최근 6개월 위성영상 비교</span>
+            <span style="font-size:13px;font-weight:600;color:#f87171">북방한계선(NLL) / 군사분계선(MDL) 최근 1년 위성영상 비교</span>
           </div>
-          <div style="font-size:11px;color:var(--text-muted);margin-bottom:12px">
-            각 월의 위성영상을 비교하여 철책 설치, 지형 변화, 군사 시설 변동을 확인합니다.
+          <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">
+            북한 MDL 80~90m 이내 철책 설치 감시 (2024.4~ 요새화, 경의선/동해선 폭파 2024.10)
           </div>
-          <div id="dmzMapGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <div style="font-size:10px;color:var(--accent-orange);margin-bottom:12px">
+            📰 동아일보 2026.06.22: "北, MDL 100m 안까지 철책 설치…서부·중부·동부 전 전선"
+          </div>
+          <div id="dmzMapGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
             <!-- JS에서 6개월 지도 생성 -->
           </div>
         </div>

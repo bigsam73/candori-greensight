@@ -4772,7 +4772,7 @@ function renderDMZWatch() {
   const grid = document.getElementById("dmzMapGrid");
   const now = new Date();
   const months = [];
-  for (let i = 5; i >= 0; i--) {
+  for (let i = 11; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     months.push({
       label: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
@@ -4921,6 +4921,7 @@ function renderDMZFullMap(regionInfo, satSource, months) {
 
   // 주요 거점 마커
   const markers = [
+    // 주요 거점
     { pos: [37.9523, 126.6837], name: "판문점 JSA", icon: "flag" },
     { pos: [38.2050, 127.2800], name: "철원 GP", icon: "military_tech" },
     { pos: [38.5870, 128.6300], name: "고성 통일전망대", icon: "visibility" },
@@ -4929,17 +4930,28 @@ function renderDMZFullMap(regionInfo, satSource, months) {
     { pos: [37.7500, 126.0200], name: "강화도 평화전망대", icon: "visibility" },
     { pos: [38.1200, 127.1300], name: "연천 태풍전망대", icon: "visibility" },
     { pos: [38.4600, 128.0900], name: "양구 을지전망대", icon: "visibility" },
+    // 북한 철책 설치 핵심 감시 구역 (2024.4~ 요새화, 2026.6 기사)
+    { pos: [37.9100, 126.8200], name: "⚠ 서부 철책 (장단)", icon: "warning", color: "#fbbf24" },
+    { pos: [38.0500, 127.0500], name: "⚠ 서부 철책 (연천)", icon: "warning", color: "#fbbf24" },
+    { pos: [38.2000, 127.2800], name: "⚠ 중부 철책 (철원)", icon: "warning", color: "#fbbf24" },
+    { pos: [38.3500, 127.7500], name: "⚠ 중부 철책 (화천)", icon: "warning", color: "#fbbf24" },
+    { pos: [38.5000, 128.2500], name: "⚠ 동부 철책 (인제)", icon: "warning", color: "#fbbf24" },
+    { pos: [38.6000, 128.6800], name: "⚠ 동부 철책 (고성)", icon: "warning", color: "#fbbf24" },
+    // 남북 연결도로 폭파 지점 (2024.10)
+    { pos: [37.9300, 126.7100], name: "💥 경의선 폭파 (2024.10)", icon: "dangerous", color: "#f87171" },
+    { pos: [38.6200, 128.7000], name: "💥 동해선 폭파 (2024.10)", icon: "dangerous", color: "#f87171" },
   ];
 
   markers.forEach((m) => {
+    const markerColor = m.color || "#f87171";
     L.marker(m.pos, {
       icon: L.divIcon({
         className: "",
         html: `<div style="display:flex;align-items:center;gap:4px">
-          <div style="width:20px;height:20px;border-radius:50%;background:#f87171;border:2px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4)">
+          <div style="width:20px;height:20px;border-radius:50%;background:${markerColor};border:2px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4)">
             <span class="material-icons-outlined" style="font-size:12px;color:#fff">${m.icon}</span>
           </div>
-          <div style="background:rgba(30,33,48,0.9);color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;white-space:nowrap;border:1px solid rgba(248,113,113,0.3)">${m.name}</div>
+          <div style="background:rgba(30,33,48,0.9);color:#fff;padding:2px 6px;border-radius:3px;font-size:10px;white-space:nowrap;border:1px solid ${markerColor}44">${m.name}</div>
         </div>`,
         iconSize: [0, 0],
       }),
@@ -4965,9 +4977,17 @@ function renderDMZFullMap(regionInfo, satSource, months) {
           <div style="width:20px;height:8px;background:rgba(248,113,113,0.2);border:1px solid rgba(248,113,113,0.4)"></div>
           <span>비무장지대 (DMZ)</span>
         </div>
-        <div style="display:flex;align-items:center;gap:4px">
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
           <div style="width:10px;height:10px;border-radius:50%;background:#f87171"></div>
           <span>주요 거점</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+          <div style="width:10px;height:10px;border-radius:50%;background:#fbbf24"></div>
+          <span>⚠ 철책 설치 구간</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <div style="width:10px;height:10px;border-radius:50%;background:#f87171"></div>
+          <span>💥 도로 폭파 지점</span>
         </div>
       </div>
     `;
