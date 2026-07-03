@@ -2307,6 +2307,7 @@ function loadRegionChart(courses) {
 
 // ============ ANALYSIS VIEW ============
 function initAnalysisView() {
+  initAggregateDates();
   const select = document.getElementById("analysisCourseSelect");
   if (select.value) loadAnalysis(select.value);
 }
@@ -4177,6 +4178,137 @@ function calculateArea(coords) {
   const areaSqm = Math.round(area * latScale * lngScale);
   return areaSqm.toLocaleString();
 }
+
+// ============ AGGREGATE NDVI (기간별 합산 분석) ============
+
+// 기간 기본값 설정
+function initAggregateDates() {
+  const now = new Date();
+  const to = now.toISOString().split("T")[0];
+  const from = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString().split("T")[0];
+  const fromEl = document.getElementById("aggDateFrom");
+  const toEl = document.getElementById("aggDateTo");
+  if (fromEl && !fromEl.value) fromEl.value = from;
+  if (toEl && !toEl.value) toEl.value = to;
+}
+
+window.loadAggregateNDVI = async function () {
+  const courseId = document.getElementById("analysisCourseSelect").value;
+  if (!courseId) { alert("골프장을 먼저 선택하세요"); return; }
+
+  const from = document.getElementById("aggDateFrom").value;
+  const to = document.getElementById("aggDateTo").value;
+  const interval = document.getElementById("aggInterval").value;
+  const resultEl = document.getElementById("aggregateResult");
+
+  if (!from || !to) { alert("기간을 설정하세요"); return; }
+
+  resultEl.innerHTML = '<div class="loading"><div class="spinner" style="width:14px;height:14px;display:inline-block;margin-right:6px"></div> 합산 분석 중...</div>';
+
+  try {
+    const result = await API.get(`/api/ndvi/aggregate/${courseId}?from=${from}&to=${to}&interval=${interval}`);
+
+    if (!result.ok || result.aggregates.length === 0) {
+      resultEl.innerHTML = '<span style="color:var(--accent-orange);font-size:12px">해당 기간에 데이터가 없습니다</span>';
+      return;
+    }
+
+    const aggs = result.aggregates;
+
+    // 전체 합산 요약
+    const allValues = aggs.map((a) => a.ndvi_mean).filter((v) => v != null);
+    const overallAvg = allValues.reduce((a, b) => a + b, 0) / allValues.length;
+    const overallSum = aggs.reduce((s, a) => s + (a.ndvi_sum || 0), 0);
+
+    resultEl.innerHTML = `
+      <!-- 요약 -->
+      <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <div style="padding:8px 14px;background:var(--bg-primary);border-radius:6px;border:1px solid var(--border-color);text-align:center;flex:1;min-width:100px">
+          <div style="font-size:20px;font-weight:700;color:${getNDVIColor(overallAvg)}">${overallAvg.toFixed(3)}</div>
+          <div style="font-size:10px;color:var(--text-muted)">기간 평균 NDVI</div>
+        </div>
+        <div style="padding:8px 14px;background:var(--bg-primary);border-radius:6px;border:1px solid var(--border-color);text-align:center;flex:1;min-width:100px">
+          <div style="font-size:20px;font-weight:700;color:var(--accent-blue)">${overallSum.toFixed(3)}</div>
+          <div style="font-size:10px;color:var(--text-muted)">NDVI 합산값</div>
+        </div>
+        <div style="padding:8px 14px;background:var(--bg-primary);border-radius:6px;border:1px solid var(--border-color);text-align:center;flex:1;min-width:100px">
+          <div style="font-size:20px;font-weight:700">${result.raw_count}</div>
+          <div style="font-size:10px;color:var(--text-muted)">원시 데이터 수</div>
+        </div>
+        <div style="padding:8px 14px;background:var(--bg-primary);border-radius:6px;border:1px solid var(--border-color);text-align:center;flex:1;min-width:100px">
+          <div style="font-size:20px;font-weight:700">${aggs.length}</div>
+          <div style="font-size:10px;color:var(--text-muted)">${interval === "monthly" ? "월" : interval === "quarterly" ? "분기" : "기간"} 수</div>
+        </div>
+      </div>
+
+      <!-- 기간별 테이블 -->
+      <div style="overflow-x:auto;max-height:300px;overflow-y:auto">
+        <table class="report-table" style="font-size:11px">
+          <thead>
+            <tr>
+              <th>기간</th>
+              <th>평균 NDVI</th>
+              <th>합산 NDVI</th>
+              <th>최소</th>
+              <th>최대</th>
+              <th>표준편차</th>
+              <th>데이터</th>
+              <th>위성</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${aggs.map((a) => `
+              <tr>
+                <td style="font-weight:600">${a.label || (a.period_from + " ~ " + a.period_to)}</td>
+                <td style="color:${getNDVIColor(a.ndvi_mean)};font-weight:700">${a.ndvi_mean?.toFixed(3) || "-"}</td>
+                <td style="color:var(--accent-blue)">${a.ndvi_sum?.toFixed(3) || "-"}</td>
+                <td>${a.ndvi_min?.toFixed(3) || "-"}</td>
+                <td>${a.ndvi_max?.toFixed(3) || "-"}</td>
+                <td>${a.ndvi_std?.toFixed(3) || "-"}</td>
+                <td>${a.record_count}건</td>
+                <td style="font-size:10px;color:var(--text-muted)">${(a.satellites || []).join(", ")}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 기간별 차트 -->
+      ${aggs.length > 1 ? `
+        <div style="margin-top:12px;height:200px">
+          <canvas id="aggChart"></canvas>
+        </div>
+      ` : ""}
+    `;
+
+    // 차트 렌더링
+    if (aggs.length > 1) {
+      const canvas = document.getElementById("aggChart");
+      if (state.charts?.aggChart) state.charts.aggChart.destroy();
+      state.charts.aggChart = new Chart(canvas, {
+        type: "bar",
+        data: {
+          labels: aggs.map((a) => a.label || a.period_from),
+          datasets: [
+            { label: "평균 NDVI", data: aggs.map((a) => a.ndvi_mean), backgroundColor: aggs.map((a) => getNDVIColor(a.ndvi_mean) + "88"), borderColor: aggs.map((a) => getNDVIColor(a.ndvi_mean)), borderWidth: 1, borderRadius: 4, yAxisID: "y" },
+            { label: "합산 NDVI", data: aggs.map((a) => a.ndvi_sum), type: "line", borderColor: "#60a5fa", borderWidth: 2, fill: false, tension: 0.3, pointRadius: 3, yAxisID: "y1" },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: "#9ba1b7", font: { size: 10 } } } },
+          scales: {
+            x: { grid: { color: "rgba(45,49,72,0.5)" }, ticks: { color: "#6b7194", font: { size: 9 } } },
+            y: { position: "left", min: 0, max: 1, grid: { color: "rgba(45,49,72,0.5)" }, ticks: { color: "#4ade80" }, title: { display: true, text: "평균", color: "#4ade80", font: { size: 10 } } },
+            y1: { position: "right", grid: { display: false }, ticks: { color: "#60a5fa" }, title: { display: true, text: "합산", color: "#60a5fa", font: { size: 10 } } },
+          },
+        },
+      });
+    }
+  } catch (err) {
+    resultEl.innerHTML = `<span style="color:var(--accent-red);font-size:12px">${err.message}</span>`;
+  }
+};
 
 // ============ EMAIL REPORT (이메일 리포트) ============
 

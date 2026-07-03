@@ -505,13 +505,33 @@
             <option value="">골프장 선택...</option>
           </select>
           <select id="analysisPeriod" class="select-md">
-            <option value="7">7일</option>
-            <option value="30" selected>30일</option>
+            <option value="30">30일</option>
             <option value="90">90일</option>
             <option value="180">180일</option>
-            <option value="365">1년</option>
+            <option value="365" selected>1년</option>
           </select>
         </div>
+      </div>
+
+      <!-- 기간별 합산 분석 패널 -->
+      <div class="card" style="margin-bottom:16px;padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:600;color:var(--text-primary)">기간별 합산 분석</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="date" id="aggDateFrom" class="input-sm" style="font-size:11px">
+            <span style="color:var(--text-muted)">~</span>
+            <input type="date" id="aggDateTo" class="input-sm" style="font-size:11px">
+          </div>
+          <select id="aggInterval" class="select-sm">
+            <option value="monthly">월별</option>
+            <option value="quarterly">분기별</option>
+            <option value="total">전체 합산</option>
+          </select>
+          <button class="btn btn-sm btn-primary" onclick="loadAggregateNDVI()">
+            <span class="material-icons-outlined" style="font-size:14px">calculate</span> 합산 분석
+          </button>
+        </div>
+        <div id="aggregateResult" style="margin-top:10px"></div>
       </div>
 
       <div class="analysis-content" id="analysisContent">

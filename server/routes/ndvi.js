@@ -70,6 +70,120 @@ router.get("/available-dates/:courseId", (req, res) => {
   }
 });
 
+// ──────────────────────────────────────────────────────────────────
+// GET /api/ndvi/aggregate/:courseId - 기간별 NDVI 합산/평균
+// ?from=2025-07-01&to=2026-06-30&interval=monthly
+// interval: monthly(월별), quarterly(분기별), custom(전체 합산)
+// ──────────────────────────────────────────────────────────────────
+router.get("/aggregate/:courseId", (req, res) => {
+  const database = db.getDb();
+  const { courseId } = req.params;
+  const { from, to, interval = "monthly" } = req.query;
+
+  if (!from || !to) {
+    return res.status(400).json({ error: "from, to 날짜 필수 (YYYY-MM-DD)" });
+  }
+
+  try {
+    let records;
+    if (database._type === "sqlite") {
+      records = database.prepare(
+        `SELECT * FROM ndvi_records WHERE course_id = ? AND date >= ? AND date <= ? ORDER BY date`
+      ).all(courseId, from, to);
+    } else {
+      records = database._data.ndvi_records
+        .filter((r) => r.course_id === Number(courseId) && r.date >= from && r.date <= to)
+        .sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    if (records.length === 0) {
+      return res.json({ ok: true, period: { from, to }, interval, aggregates: [], raw_count: 0 });
+    }
+
+    let aggregates = [];
+
+    if (interval === "custom" || interval === "total") {
+      // 전체 기간 합산
+      const agg = calcAggregate(records, from, to);
+      aggregates = [agg];
+    } else if (interval === "quarterly") {
+      // 분기별
+      aggregates = groupByQuarter(records, from, to);
+    } else {
+      // 월별 (기본)
+      aggregates = groupByMonth(records, from, to);
+    }
+
+    res.json({
+      ok: true,
+      course_id: Number(courseId),
+      period: { from, to },
+      interval,
+      raw_count: records.length,
+      aggregates,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function calcAggregate(records, periodFrom, periodTo) {
+  const ndviValues = records.map((r) => r.ndvi_mean).filter((v) => v != null);
+  const minValues = records.map((r) => r.ndvi_min).filter((v) => v != null);
+  const maxValues = records.map((r) => r.ndvi_max).filter((v) => v != null);
+
+  const sum = ndviValues.reduce((a, b) => a + b, 0);
+  const avg = ndviValues.length > 0 ? sum / ndviValues.length : null;
+  const satellites = [...new Set(records.map((r) => r.satellite))];
+
+  return {
+    period_from: periodFrom,
+    period_to: periodTo,
+    record_count: records.length,
+    ndvi_mean: avg ? Math.round(avg * 1000) / 1000 : null,
+    ndvi_sum: Math.round(sum * 1000) / 1000,
+    ndvi_min: minValues.length > 0 ? Math.min(...minValues) : null,
+    ndvi_max: maxValues.length > 0 ? Math.max(...maxValues) : null,
+    ndvi_std: ndviValues.length > 1 ? Math.round(Math.sqrt(ndviValues.reduce((s, v) => s + (v - avg) ** 2, 0) / ndviValues.length) * 1000) / 1000 : 0,
+    satellites,
+  };
+}
+
+function groupByMonth(records, from, to) {
+  const groups = {};
+  records.forEach((r) => {
+    const key = r.date.substring(0, 7); // YYYY-MM
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(r);
+  });
+
+  return Object.entries(groups)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, recs]) => ({
+      label: month,
+      ...calcAggregate(recs, month + "-01", month + "-31"),
+    }));
+}
+
+function groupByQuarter(records, from, to) {
+  const groups = {};
+  records.forEach((r) => {
+    const m = parseInt(r.date.substring(5, 7));
+    const y = r.date.substring(0, 4);
+    const q = Math.ceil(m / 3);
+    const key = `${y}-Q${q}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(r);
+  });
+
+  return Object.entries(groups)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([quarter, recs]) => ({
+      label: quarter,
+      ...calcAggregate(recs, recs[0].date, recs[recs.length - 1].date),
+    }));
+}
+
 // GET /api/ndvi/course/:courseId - 특정 골프장 NDVI 시계열 데이터
 router.get("/course/:courseId", (req, res) => {
   const database = db.getDb();
