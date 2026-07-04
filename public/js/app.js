@@ -4738,16 +4738,13 @@ function getDMZTileLayer(satSource, monthLabel) {
 
   switch (satSource) {
     case "sentinel2":
-      // Sentinel-2 Cloudless (EOX, 무료, 키 불필요, 연간 모자이크)
-      // 또는 EOX WMS (날짜 범위 지원)
-      return L.tileLayer.wms(
-        "https://tiles.maps.eox.at/wms", {
-          layers: "s2cloudless-2023",
-          format: "image/jpeg",
-          transparent: false,
-          maxZoom: 16,
-          attribution: `Sentinel-2 Cloudless`,
-        });
+      // Sentinel-2 Cloudless (EOX, z12+ only) + Google 위성 배경 (z11 이하)
+      return L.layerGroup([
+        L.tileLayer("https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}", { maxZoom: 11, attribution: "" }),
+        L.tileLayer("https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2023_3857/default/GoogleMapsCompatible/{z}/{x}/{y}.jpg", {
+          minZoom: 12, maxZoom: 18, attribution: "Sentinel-2 Cloudless 2023 (EOX)",
+        }),
+      ]);
     case "planet":
       // Planet Basemaps (월간 모자이크, API Key 필요)
       const mosaicName = `global_monthly_${year}_${month}_mosaic`;
