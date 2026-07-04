@@ -558,6 +558,7 @@ function switchView(viewId) {
     satellites: "위성 데이터 소스",
     report: "리포트",
     "compare-slider": "시간비교 슬라이더",
+    "drone-vs-sat": "드론 vs 위성",
     "email-report": "이메일 리포트",
     gdd: "GDD 계산기",
     "dmz-watch": "DMZ 감시",
@@ -573,6 +574,7 @@ function switchView(viewId) {
   if (viewId === "analysis") initAnalysisView();
   if (viewId === "compare") initCompareView();
   if (viewId === "satellites") loadSatelliteCatalog();
+  if (viewId === "drone-vs-sat") initDroneVsSatView();
   if (viewId === "email-report") initEmailReportView();
   if (viewId === "compare-slider") initCompareSliderView();
   if (viewId === "gdd") initGDDView();
@@ -644,6 +646,7 @@ function populateCourseSelectors() {
     "analysisCourseSelect",
     "compareCourses",
     "reportCourse",
+    "dvsCourseSelect",
     "sliderCourseSelect",
     "gddCourseSelect",
     "ontologyCourseSelect",
@@ -4311,6 +4314,187 @@ window.loadAggregateNDVI = async function () {
     resultEl.innerHTML = `<span style="color:var(--accent-red);font-size:12px">${err.message}</span>`;
   }
 };
+
+// ============ DRONE vs SATELLITE (Altum 멀티스펙트럴 비교) ============
+
+const ALTUM_BANDS = [
+  { id: "blue",     name: "Blue",      wavelength: "475nm", s2Band: "B02 (490nm)", match: "96%" },
+  { id: "green",    name: "Green",     wavelength: "560nm", s2Band: "B03 (560nm)", match: "100%" },
+  { id: "red",      name: "Red",       wavelength: "668nm", s2Band: "B04 (665nm)", match: "99%" },
+  { id: "rededge",  name: "Red Edge",  wavelength: "717nm", s2Band: "B05 (705nm)", match: "95%" },
+  { id: "nir",      name: "NIR",       wavelength: "842nm", s2Band: "B08 (842nm)", match: "100%" },
+  { id: "thermal",  name: "Thermal",   wavelength: "LWIR",  s2Band: "없음 (Open-Meteo 대체)", match: "-" },
+];
+
+const DVS_INDICES = [
+  { id: "ndvi",  name: "NDVI",  formula: "(NIR-Red)/(NIR+Red)", altum: "B5-B3/B5+B3", s2: "B08-B04/B08+B04", desc: "식생 건강도" },
+  { id: "ndre",  name: "NDRE",  formula: "(NIR-RE)/(NIR+RE)",   altum: "B5-B4/B5+B4", s2: "B08-B05/B08+B05", desc: "초기 스트레스" },
+  { id: "gndvi", name: "GNDVI", formula: "(NIR-G)/(NIR+G)",     altum: "B5-B2/B5+B2", s2: "B08-B03/B08+B03", desc: "엽록소/질소" },
+  { id: "savi",  name: "SAVI",  formula: "1.5(NIR-R)/(NIR+R+0.5)", altum: "1.5(B5-B3)/(B5+B3+0.5)", s2: "1.5(B08-B04)/(B08+B04+0.5)", desc: "토양 보정" },
+  { id: "ndmi",  name: "NDMI",  formula: "(NIR-SWIR)/(NIR+SWIR)", altum: "없음 (SWIR 없음)", s2: "B08-B11/B08+B11", desc: "수분 스트레스" },
+];
+
+function initDroneVsSatView() {
+  const select = document.getElementById("dvsCourseSelect");
+  if (!select._bound) {
+    select.addEventListener("change", (e) => { if (e.target.value) loadDroneVsSat(e.target.value); });
+    select._bound = true;
+  }
+  if (select.value) loadDroneVsSat(select.value);
+}
+
+async function loadDroneVsSat(courseId) {
+  const content = document.getElementById("dvsContent");
+  content.innerHTML = '<div class="loading"><div class="spinner"></div> 데이터 로드 중...</div>';
+
+  try {
+    const [course, droneData, ndviData] = await Promise.all([
+      API.get(`/api/golf-courses/${courseId}`),
+      API.get(`/api/drone/${courseId}`),
+      API.get(`/api/ndvi/course/${courseId}?days=365`),
+    ]);
+
+    const latestNdvi = ndviData.sort((a, b) => b.date.localeCompare(a.date))[0];
+
+    content.innerHTML = `
+      <!-- 밴드 호환성 테이블 -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>Altum ↔ Sentinel-2 밴드 호환성</h3></div>
+        <div style="padding:12px;overflow-x:auto">
+          <table class="report-table" style="font-size:11px">
+            <thead><tr><th>Altum 밴드</th><th>파장</th><th>Sentinel-2 매칭</th><th>일치도</th><th>비교 가능</th></tr></thead>
+            <tbody>
+              ${ALTUM_BANDS.map((b) => `
+                <tr>
+                  <td style="font-weight:600">${b.name}</td>
+                  <td>${b.wavelength}</td>
+                  <td>${b.s2Band}</td>
+                  <td style="color:${b.match === "100%" ? "var(--accent-green)" : b.match === "-" ? "var(--text-muted)" : "var(--accent-blue)"};font-weight:600">${b.match}</td>
+                  <td>${b.match !== "-" ? "✓" : "△ (보조 데이터)"}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 비교 가능 식생지수 -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>비교 가능 식생지수</h3></div>
+        <div style="padding:12px;overflow-x:auto">
+          <table class="report-table" style="font-size:11px">
+            <thead><tr><th>지수</th><th>공식</th><th>Altum 밴드</th><th>Sentinel-2 밴드</th><th>용도</th><th>해상도 비교</th></tr></thead>
+            <tbody>
+              ${DVS_INDICES.map((idx) => `
+                <tr>
+                  <td style="font-weight:600;color:var(--accent-green)">${idx.name}</td>
+                  <td style="font-size:10px">${idx.formula}</td>
+                  <td style="font-size:10px">${idx.altum}</td>
+                  <td style="font-size:10px">${idx.s2}</td>
+                  <td>${idx.desc}</td>
+                  <td style="font-size:10px">5cm vs 10m</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <!-- 드론 데이터 -->
+        <div class="card">
+          <div class="card-header">
+            <h3>드론 멀티스펙트럴 (Altum)</h3>
+            <button class="btn btn-sm btn-primary" onclick="openDroneUpload(${courseId})">
+              <span class="material-icons-outlined">upload</span> Altum 영상 업로드
+            </button>
+          </div>
+          <div style="padding:12px">
+            ${droneData.count > 0 ? `
+              <div style="display:grid;gap:8px">
+                ${droneData.images.map((img) => `
+                  <div style="display:flex;align-items:center;gap:10px;padding:8px;background:var(--bg-primary);border-radius:6px;border:1px solid var(--border-color)">
+                    <div style="width:60px;height:60px;border-radius:4px;overflow:hidden;flex-shrink:0;background:var(--bg-input)">
+                      <img src="${img.url_thumb || img.url}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">
+                    </div>
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${img.name}</div>
+                      <div style="font-size:10px;color:var(--text-muted)">${img.date} | ${(img.size/1024/1024).toFixed(1)}MB</div>
+                    </div>
+                    <button class="btn btn-sm btn-primary" style="padding:4px 8px" onclick="showDroneOnMap(${img.course_id},${img.id})">
+                      <span class="material-icons-outlined" style="font-size:12px">map</span>
+                    </button>
+                  </div>
+                `).join("")}
+              </div>
+            ` : `
+              <div style="text-align:center;padding:20px;color:var(--text-muted)">
+                <span class="material-icons-outlined" style="font-size:32px;display:block;margin-bottom:4px">flight</span>
+                <div style="font-size:12px">Altum 멀티스펙트럴 영상을 업로드하세요</div>
+                <div style="font-size:10px;margin-top:4px">지원: NDVI/NDRE/GNDVI 맵 (GeoTIFF)</div>
+              </div>
+            `}
+          </div>
+        </div>
+
+        <!-- 위성 데이터 -->
+        <div class="card">
+          <div class="card-header"><h3>위성 데이터 (Sentinel-2)</h3></div>
+          <div style="padding:12px">
+            ${latestNdvi ? `
+              <div style="padding:10px;background:var(--bg-primary);border-radius:6px;border:1px solid var(--border-color);margin-bottom:8px">
+                <div style="font-size:12px;font-weight:600">최신 위성 NDVI</div>
+                <div style="font-size:28px;font-weight:700;color:${getNDVIColor(latestNdvi.ndvi_mean)};margin:4px 0">${latestNdvi.ndvi_mean?.toFixed(3)}</div>
+                <div style="font-size:10px;color:var(--text-muted)">${latestNdvi.date} | ${latestNdvi.satellite} | 10m 해상도</div>
+              </div>
+              <div style="font-size:11px;color:var(--text-secondary)">
+                <div style="margin-bottom:2px">NDVI 범위: ${latestNdvi.ndvi_min?.toFixed(3)} ~ ${latestNdvi.ndvi_max?.toFixed(3)}</div>
+                <div>전체 ${ndviData.length}건 관측 (최근 1년)</div>
+              </div>
+            ` : `
+              <div style="text-align:center;padding:20px;color:var(--text-muted)">위성 데이터 없음</div>
+            `}
+
+            <div style="margin-top:12px;padding:10px;background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);border-radius:6px;font-size:11px">
+              <div style="font-weight:600;color:var(--accent-green);margin-bottom:4px">비교 분석 가이드</div>
+              <ol style="margin:0;padding-left:16px;color:var(--text-secondary);line-height:1.6">
+                <li>Altum으로 골프장 촬영 (GSD 5cm)</li>
+                <li>NDVI/NDRE 맵을 GeoTIFF로 처리</li>
+                <li>위 "Altum 영상 업로드" 버튼으로 업로드</li>
+                <li>위성 NDVI 지도와 동일 위치 비교</li>
+                <li>차이점: 드론은 그린 단위, 위성은 코스 단위</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 해상도 비교 -->
+      <div class="card" style="margin-top:16px">
+        <div class="card-header"><h3>해상도 비교</h3></div>
+        <div style="padding:16px">
+          <div style="display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap">
+            ${[
+              { name: "Altum 드론", res: "5cm", px: "200x", color: "#4ade80", desc: "그린 딤플까지 식별" },
+              { name: "Planet", res: "4.77m", px: "1x", color: "#fb923c", desc: "홀 단위 식별" },
+              { name: "Sentinel-2", res: "10m", px: "0.5x", color: "#60a5fa", desc: "코스 단위 식별" },
+              { name: "Landsat", res: "30m", px: "0.17x", color: "#a78bfa", desc: "골프장 전체" },
+            ].map((s) => `
+              <div style="text-align:center;padding:16px 20px;background:var(--bg-primary);border-radius:8px;border:2px solid ${s.color}33;min-width:120px">
+                <div style="font-size:24px;font-weight:700;color:${s.color}">${s.res}</div>
+                <div style="font-size:12px;font-weight:600;margin-top:2px">${s.name}</div>
+                <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${s.desc}</div>
+                <div style="font-size:9px;color:${s.color};margin-top:4px">${s.px} 상대 해상도</div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    content.innerHTML = `<div style="color:var(--accent-red);text-align:center;padding:40px">${err.message}</div>`;
+  }
+}
 
 // ============ EMAIL REPORT (이메일 리포트) ============
 

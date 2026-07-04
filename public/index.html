@@ -95,6 +95,10 @@
         <span class="material-icons-outlined">email</span>
         <span>이메일 리포트</span>
       </a>
+      <a href="#" class="nav-item" data-view="drone-vs-sat">
+        <span class="material-icons-outlined">compare_arrows</span>
+        <span>드론 vs 위성</span>
+      </a>
       <a href="#" class="nav-item" data-view="compare-slider">
         <span class="material-icons-outlined">compare</span>
         <span>시간비교</span>
@@ -671,6 +675,25 @@
               <span class="material-icons-outlined" style="font-size:16px;color:var(--accent-green)">check_circle</span>
               위성 소스 및 촬영 날짜
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drone vs Satellite Comparison View -->
+    <div class="view" id="view-drone-vs-sat">
+      <div class="view-header">
+        <h2>드론 vs 위성 비교 (Altum Multispectral)</h2>
+        <div class="header-controls">
+          <select id="dvsCourseSelect" class="select-md"><option value="">골프장 선택...</option></select>
+        </div>
+      </div>
+      <div id="dvsContent">
+        <div style="text-align:center;padding:40px;color:var(--text-muted)">
+          <span class="material-icons-outlined" style="font-size:64px;display:block;margin-bottom:8px">compare_arrows</span>
+          <p>골프장을 선택하면 드론 멀티스펙트럴 영상과 위성 데이터를 비교할 수 있습니다</p>
+          <div style="margin-top:16px;font-size:12px;color:var(--text-secondary)">
+            MicaSense Altum: Blue(475nm) / Green(560nm) / Red(668nm) / Red Edge(717nm) / NIR(842nm) / Thermal
           </div>
         </div>
       </div>
