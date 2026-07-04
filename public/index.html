@@ -751,11 +751,18 @@
         <div class="header-controls">
           <select id="dmzRegion" class="select-md">
             <option value="all">전체 38선</option>
-            <option value="west-nll">서해 NLL (백령도~연평도)</option>
-            <option value="west-dmz">서부 DMZ (파주~김포)</option>
-            <option value="central-dmz">중부 DMZ (철원~화천)</option>
-            <option value="east-dmz">동부 DMZ (양구~고성)</option>
-            <option value="east-nll">동해 NLL</option>
+            <optgroup label="🔴 핵심 감시 구역">
+              <option value="gyeongui">경의선 폭파 지점 (2024.10)</option>
+              <option value="donghae">동해선 폭파 지점 (2024.10)</option>
+              <option value="cheorwon">철원 철책 설치 구간</option>
+            </optgroup>
+            <optgroup label="전선별">
+              <option value="west-nll">서해 NLL (백령도~연평도)</option>
+              <option value="west-dmz">서부 DMZ (파주~연천)</option>
+              <option value="central-dmz">중부 DMZ (철원~김화) ★</option>
+              <option value="east-dmz">동부 DMZ (양구~고성)</option>
+              <option value="east-nll">동해 NLL</option>
+            </optgroup>
           </select>
           <select id="dmzSatSource" class="select-md">
             <option value="planet" selected>Planet Basemaps (4.77m, 월별)</option>

@@ -4676,12 +4676,15 @@ async function loadGDD(courseId) {
 // ============ DMZ WATCH (DMZ/NLL 감시) ============
 
 const DMZ_REGIONS = {
-  "all": { center: [38.3, 127.5], zoom: 8, name: "전체 38선" },
+  "all": { center: [38.2, 127.5], zoom: 8, name: "전체 38선" },
   "west-nll": { center: [37.7, 125.7], zoom: 10, name: "서해 NLL (백령도~연평도)" },
-  "west-dmz": { center: [37.9, 126.7], zoom: 11, name: "서부 DMZ (파주~김포)" },
-  "central-dmz": { center: [38.3, 127.5], zoom: 11, name: "중부 DMZ (철원~화천)" },
-  "east-dmz": { center: [38.4, 128.2], zoom: 11, name: "동부 DMZ (양구~고성)" },
+  "west-dmz": { center: [37.93, 126.75], zoom: 12, name: "서부 DMZ (파주~장단~연천)" },
+  "central-dmz": { center: [38.22, 127.35], zoom: 12, name: "중부 DMZ (철원~김화) ★철책 집중" },
+  "east-dmz": { center: [38.50, 128.30], zoom: 12, name: "동부 DMZ (양구~인제~고성)" },
   "east-nll": { center: [38.6, 128.9], zoom: 10, name: "동해 NLL" },
+  "gyeongui": { center: [37.934, 126.695], zoom: 15, name: "🔴 경의선 폭파 지점" },
+  "donghae": { center: [38.615, 128.695], zoom: 15, name: "🔴 동해선 폭파 지점" },
+  "cheorwon": { center: [38.20, 127.28], zoom: 14, name: "🔴 철원 철책 설치 구간" },
 };
 
 // MDL(군사분계선) 좌표 (서→동, 주요 포인트)
@@ -4735,16 +4738,15 @@ function getDMZTileLayer(satSource, monthLabel) {
 
   switch (satSource) {
     case "sentinel2":
-      // Sentinel-2 WMS (Copernicus, 무료, 날짜별)
+      // Sentinel-2 Cloudless (EOX, 무료, 키 불필요, 연간 모자이크)
+      // 또는 EOX WMS (날짜 범위 지원)
       return L.tileLayer.wms(
-        "https://sh.dataspace.copernicus.eu/ogc/wms/ed64bf38-575d-4fee-83d0-59bd0c6f80b3", {
-          layers: "TRUE-COLOR-S2L2A",
-          format: "image/png",
-          transparent: true,
-          time: `${dateFrom}/${dateTo}`,
-          maxcc: 30,
-          maxZoom: 18,
-          attribution: `Sentinel-2 ${monthLabel}`,
+        "https://tiles.maps.eox.at/wms", {
+          layers: "s2cloudless-2023",
+          format: "image/jpeg",
+          transparent: false,
+          maxZoom: 16,
+          attribution: `Sentinel-2 Cloudless`,
         });
     case "planet":
       // Planet Basemaps (월간 모자이크, API Key 필요)
@@ -4930,16 +4932,28 @@ function renderDMZFullMap(regionInfo, satSource, months) {
     { pos: [37.7500, 126.0200], name: "강화도 평화전망대", icon: "visibility" },
     { pos: [38.1200, 127.1300], name: "연천 태풍전망대", icon: "visibility" },
     { pos: [38.4600, 128.0900], name: "양구 을지전망대", icon: "visibility" },
-    // 북한 철책 설치 핵심 감시 구역 (2024.4~ 요새화, 2026.6 기사)
-    { pos: [37.9100, 126.8200], name: "⚠ 서부 철책 (장단)", icon: "warning", color: "#fbbf24" },
-    { pos: [38.0500, 127.0500], name: "⚠ 서부 철책 (연천)", icon: "warning", color: "#fbbf24" },
-    { pos: [38.2000, 127.2800], name: "⚠ 중부 철책 (철원)", icon: "warning", color: "#fbbf24" },
-    { pos: [38.3500, 127.7500], name: "⚠ 중부 철책 (화천)", icon: "warning", color: "#fbbf24" },
-    { pos: [38.5000, 128.2500], name: "⚠ 동부 철책 (인제)", icon: "warning", color: "#fbbf24" },
-    { pos: [38.6000, 128.6800], name: "⚠ 동부 철책 (고성)", icon: "warning", color: "#fbbf24" },
+    // ── 북한 철책 설치 핵심 감시 구역 ──
+    // 동아일보 2026.06.22: "MDL 이북 80~90m 철조망, 5~10m 불모지"
+    // 서부 전선 (파주~김포~장단~연천)
+    { pos: [37.8950, 126.7350], name: "⚠ 서부 철책: 파주 MDL", icon: "warning", color: "#fbbf24" },
+    { pos: [37.9100, 126.8200], name: "⚠ 서부 철책: 장단 MDL", icon: "warning", color: "#fbbf24" },
+    { pos: [37.9500, 126.9500], name: "⚠ 서부 철책: 적성 MDL", icon: "warning", color: "#fbbf24" },
+    { pos: [38.0500, 127.0500], name: "⚠ 서부 철책: 연천 MDL", icon: "warning", color: "#fbbf24" },
+    // 중부 전선 (철원~김화~화천)
+    { pos: [38.2000, 127.2800], name: "⚠ 중부 철책: 철원 MDL (중점감시)", icon: "warning", color: "#fbbf24" },
+    { pos: [38.2500, 127.4500], name: "⚠ 중부 철책: 김화 MDL", icon: "warning", color: "#fbbf24" },
+    { pos: [38.3500, 127.7500], name: "⚠ 중부 철책: 화천 MDL", icon: "warning", color: "#fbbf24" },
+    // 동부 전선 (양구~인제~고성)
+    { pos: [38.4500, 128.0500], name: "⚠ 동부 철책: 양구 MDL", icon: "warning", color: "#fbbf24" },
+    { pos: [38.5000, 128.2500], name: "⚠ 동부 철책: 인제 MDL", icon: "warning", color: "#fbbf24" },
+    { pos: [38.5500, 128.5000], name: "⚠ 동부 철책: 간성 MDL", icon: "warning", color: "#fbbf24" },
+    { pos: [38.6000, 128.6800], name: "⚠ 동부 철책: 고성 MDL", icon: "warning", color: "#fbbf24" },
     // 남북 연결도로 폭파 지점 (2024.10)
-    { pos: [37.9300, 126.7100], name: "💥 경의선 폭파 (2024.10)", icon: "dangerous", color: "#f87171" },
-    { pos: [38.6200, 128.7000], name: "💥 동해선 폭파 (2024.10)", icon: "dangerous", color: "#f87171" },
+    { pos: [37.9340, 126.6950], name: "💥 경의선 폭파 (2024.10.15)", icon: "dangerous", color: "#f87171" },
+    { pos: [38.6150, 128.6950], name: "💥 동해선 폭파 (2024.10.15)", icon: "dangerous", color: "#f87171" },
+    // DMZ 내 지뢰 매설 구역 (2024~ 진행)
+    { pos: [38.1500, 127.1800], name: "💣 지뢰 매설 구역 (연천-철원)", icon: "warning", color: "#ef4444" },
+    { pos: [38.4000, 127.9000], name: "💣 지뢰 매설 구역 (양구)", icon: "warning", color: "#ef4444" },
   ];
 
   markers.forEach((m) => {
