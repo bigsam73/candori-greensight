@@ -3708,9 +3708,105 @@ function updateMultiBoundaryInfo() {
         name: layer._courseName || `코스 ${layers.length + 1}`,
         coords,
         area: calculateArea(coords),
+    });
+  });
+
+  // 주소 검색 기능
+  initAddCourseSearch();
+}
+
+function initAddCourseSearch() {
+  const input = document.getElementById("addCourseSearchInput");
+  const results = document.getElementById("addCourseSearchResults");
+  if (!input || !results || input._bound) return;
+  input._bound = true;
+
+  let timer = null;
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 2) { results.classList.remove("active"); return; }
+    timer = setTimeout(() => searchForAddCourse(q), 400);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); clearTimeout(timer); searchForAddCourse(input.value.trim()); }
+    if (e.key === "Escape") results.classList.remove("active");
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#addCourseSearchInput") && !e.target.closest("#addCourseSearchResults")) {
+      results.classList.remove("active");
+    }
+  });
+}
+
+async function searchForAddCourse(query) {
+  const results = document.getElementById("addCourseSearchResults");
+  results.innerHTML = '<div class="map-search-loading"><div class="spinner" style="width:14px;height:14px;display:inline-block;margin-right:4px"></div>검색 중...</div>';
+  results.classList.add("active");
+
+  try {
+    const encoded = encodeURIComponent(query);
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encoded}&countrycodes=kr&limit=8&addressdetails=1&accept-language=ko`,
+      { headers: { "User-Agent": "SonoControl/1.0" } }
+    );
+    const data = await response.json();
+
+    if (data.length === 0) {
+      results.innerHTML = '<div class="map-search-loading">검색 결과 없음</div>';
+      return;
+    }
+
+    results.innerHTML = data.map((item) => {
+      const name = item.display_name.split(",")[0];
+      const addr = item.display_name.split(",").slice(1, 3).join(",").trim();
+      return `
+        <div class="map-search-result-item" data-lat="${item.lat}" data-lng="${item.lon}" data-name="${name}" data-addr="${item.display_name}">
+          <span class="material-icons-outlined" style="font-size:16px;color:var(--accent-green)">place</span>
+          <div>
+            <div class="map-search-result-name">${name}</div>
+            <div class="map-search-result-addr">${addr}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    results.querySelectorAll(".map-search-result-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        const lat = parseFloat(item.dataset.lat);
+        const lng = parseFloat(item.dataset.lng);
+        const name = item.dataset.name;
+        const addr = item.dataset.addr;
+
+        // 지도 이동
+        if (drawMap) {
+          drawMap.setView([lat, lng], 16);
+          // 임시 마커
+          if (drawMap._searchPin) drawMap.removeLayer(drawMap._searchPin);
+          drawMap._searchPin = L.marker([lat, lng], {
+            icon: L.divIcon({
+              className: "",
+              html: '<div style="width:16px;height:16px;border-radius:50%;background:#f87171;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4)"></div>',
+              iconSize: [16, 16], iconAnchor: [8, 8],
+            }),
+          }).addTo(drawMap);
+        }
+
+        // 폼에 자동 입력
+        const nameInput = document.querySelector('#addCourseForm input[name="name"]');
+        const addrInput = document.querySelector('#addCourseForm input[name="address"]');
+        if (nameInput && !nameInput.value) nameInput.value = name;
+        if (addrInput) addrInput.value = addr.substring(0, 50);
+
+        document.getElementById("addCourseSearchInput").value = name;
+        results.classList.remove("active");
       });
     });
+  } catch (err) {
+    results.innerHTML = `<div class="map-search-loading" style="color:var(--accent-red)">검색 실패</div>`;
   }
+}
+
 
   if (layers.length === 0) {
     infoEl.innerHTML = '<span style="color:var(--accent-orange)">영역 미설정 - 도구로 코스 영역을 그리세요</span>';
@@ -4930,13 +5026,20 @@ function getDMZTileLayer(satSource, monthLabel) {
         }),
       ]);
     case "planet":
-      // Planet Basemaps (월간 모자이크, API Key 필요)
-      const mosaicName = `global_monthly_${year}_${month}_mosaic`;
+      // Planet Basemaps - 미래 월은 최신 가용 모자이크로 폴백
+      const now = new Date();
+      let pYear = parseInt(year), pMonth = parseInt(month);
+      // 2026-07이면 2026-06으로 (최신 가용 = 현재월-1)
+      if (pYear > now.getFullYear() || (pYear === now.getFullYear() && pMonth >= now.getMonth() + 1)) {
+        pMonth = now.getMonth(); // 이전 달 (0-indexed이므로 현재월-1과 같음)
+        if (pMonth <= 0) { pMonth = 12; pYear--; }
+      }
+      const mosaicName = `global_monthly_${pYear}_${String(pMonth).padStart(2, "0")}_mosaic`;
       const apiKey = "PLAK173b27d00146483c8db27f7f1ec1b399";
       return L.tileLayer(
         `https://tiles.planet.com/basemaps/v1/planet-tiles/${mosaicName}/gmap/{z}/{x}/{y}.png?api_key=${apiKey}`, {
           maxZoom: 20,
-          attribution: `Planet ${monthLabel}`,
+          attribution: `Planet ${pYear}-${String(pMonth).padStart(2, "0")}`,
         });
     case "esri-clarity":
       return L.tileLayer("https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 20 });
@@ -4955,8 +5058,10 @@ function renderDMZWatch() {
   const grid = document.getElementById("dmzMapGrid");
   const now = new Date();
   const months = [];
+  // 최신 가용 월 = 현재월-1 (Planet 모자이크는 1달 후 공개)
+  const latestAvailMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const d = new Date(latestAvailMonth.getFullYear(), latestAvailMonth.getMonth() - i, 1);
     months.push({
       label: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
     });

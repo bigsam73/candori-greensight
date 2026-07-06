@@ -393,10 +393,18 @@
           <div style="display:flex;gap:0;height:500px">
             <!-- Drawing Map -->
             <div style="flex:1;position:relative">
+              <!-- 주소 검색 바 -->
+              <div style="position:absolute;top:8px;left:50px;right:8px;z-index:1000">
+                <div class="map-search-box" style="background:rgba(30,33,48,0.95);border:1px solid var(--border-color)">
+                  <span class="material-icons-outlined" style="font-size:16px;color:var(--text-muted)">search</span>
+                  <input type="text" id="addCourseSearchInput" class="map-search-input" placeholder="골프장 이름 또는 주소 검색..." autocomplete="off" style="width:100%">
+                  <div class="map-search-results" id="addCourseSearchResults"></div>
+                </div>
+              </div>
               <div id="drawMap" style="width:100%;height:100%"></div>
               <div style="position:absolute;bottom:8px;left:8px;z-index:1000;background:rgba(30,33,48,0.9);padding:6px 10px;border-radius:6px;font-size:11px;color:var(--text-secondary)">
                 <span class="material-icons-outlined" style="font-size:14px;vertical-align:middle">info</span>
-                도구를 선택하여 골프장 영역을 그리세요 (다각형/사각형)
+                주소 검색 → 위치 이동 → 도구로 영역 그리기
               </div>
             </div>
             <!-- Form Panel -->
