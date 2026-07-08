@@ -5300,6 +5300,124 @@ function renderDMZFullMap(regionInfo, satSource, months) {
   monthSelect.innerHTML = months.map((m) => `<option value="${m.label}">${m.label}</option>`).join("");
 }
 
+// ============ DMZ TAB SWITCH ============
+window.switchDMZTab = function (tab) {
+  const satContent = document.getElementById("dmzContent");
+  const safetyContent = document.getElementById("dmzSafetyContent");
+  const tabSat = document.getElementById("dmzTabSat");
+  const tabSafety = document.getElementById("dmzTabSafety");
+
+  if (tab === "safety") {
+    satContent.style.display = "none";
+    safetyContent.style.display = "block";
+    tabSat.className = "btn btn-sm btn-secondary";
+    tabSat.style.background = ""; tabSat.style.color = "";
+    tabSafety.className = "btn btn-sm";
+    tabSafety.style.background = "var(--accent-green)"; tabSafety.style.color = "#0f1117";
+    loadGOPSafety();
+  } else {
+    satContent.style.display = "block";
+    safetyContent.style.display = "none";
+    tabSafety.className = "btn btn-sm btn-secondary";
+    tabSafety.style.background = ""; tabSafety.style.color = "";
+    tabSat.className = "btn btn-sm";
+    tabSat.style.background = "var(--accent-green)"; tabSat.style.color = "#0f1117";
+  }
+};
+
+async function loadGOPSafety() {
+  const content = document.getElementById("dmzSafetyContent");
+  content.innerHTML = '<div class="loading"><div class="spinner"></div> 전 전선 안전 데이터 수집 중...</div>';
+
+  try {
+    const result = await API.get("/api/gop-safety");
+    if (!result.ok) throw new Error("데이터 로드 실패");
+
+    const riskColors = { 0: "#4ade80", 1: "#60a5fa", 2: "#fbbf24", 3: "#fb923c", 4: "#f87171" };
+    const riskIcons = { 0: "check_circle", 1: "info", 2: "warning", 3: "error_outline", 4: "dangerous" };
+    const overallColor = riskColors[result.overall_risk] || "#4ade80";
+
+    content.innerHTML = `
+      <!-- 전체 현황 -->
+      <div class="card" style="margin-bottom:16px;padding:16px;border-left:4px solid ${overallColor}">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="material-icons-outlined" style="font-size:36px;color:${overallColor}">${riskIcons[result.overall_risk]}</span>
+          <div>
+            <div style="font-size:18px;font-weight:700;color:${overallColor}">${result.overall_status}</div>
+            <div style="font-size:12px;color:var(--text-muted)">전 전선 종합 | ${new Date().toLocaleString("ko-KR")} 기준 | 알림 ${result.total_alerts}건 (긴급 ${result.critical_alerts}건)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 전선별 카드 -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:16px">
+        ${result.points.map((p) => {
+          const c = riskColors[p.risk_level] || "#4ade80";
+          const cur = p.current;
+          return `
+            <div class="card" style="padding:14px;border-left:3px solid ${c}">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div style="font-weight:600;font-size:13px">${p.name}</div>
+                <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:${c}22;color:${c}">${p.risk_status}</span>
+              </div>
+              ${cur ? `
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-size:11px;margin-bottom:8px">
+                  <div style="text-align:center;padding:4px;background:var(--bg-primary);border-radius:4px">
+                    <div style="font-size:16px;font-weight:700;color:${cur.temperature >= 33 ? "#f87171" : cur.temperature <= -10 ? "#60a5fa" : "var(--text-primary)"}">${cur.temperature}°</div>
+                    <div style="color:var(--text-muted);font-size:9px">기온</div>
+                  </div>
+                  <div style="text-align:center;padding:4px;background:var(--bg-primary);border-radius:4px">
+                    <div style="font-size:16px;font-weight:700">${cur.wind_gust?.toFixed(0) || 0}m/s</div>
+                    <div style="color:var(--text-muted);font-size:9px">돌풍</div>
+                  </div>
+                  <div style="text-align:center;padding:4px;background:var(--bg-primary);border-radius:4px">
+                    <div style="font-size:16px;font-weight:700;color:${cur.precipitation > 10 ? "#60a5fa" : "var(--text-primary)"}">${cur.precipitation}mm</div>
+                    <div style="color:var(--text-muted);font-size:9px">강수</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted)">
+                  <span>습도 ${cur.humidity}%</span>
+                  <span>|</span>
+                  <span style="color:${cur.wbgt >= 30 ? "#f87171" : "var(--text-muted)"}">WBGT ${cur.wbgt}° (${cur.heat_illness})</span>
+                  <span>|</span>
+                  <span>UV ${cur.uv_index}</span>
+                </div>
+              ` : '<div style="color:var(--text-muted);font-size:11px">데이터 없음</div>'}
+              ${p.alerts.length > 0 ? `
+                <div style="margin-top:8px;border-top:1px solid var(--border-color);padding-top:6px">
+                  ${p.alerts.map((a) => `
+                    <div style="display:flex;align-items:center;gap:4px;padding:2px 0;font-size:10px">
+                      <span class="material-icons-outlined" style="font-size:12px;color:${a.severity === "critical" ? "#f87171" : a.severity === "warning" ? "#fb923c" : "#fbbf24"}">${a.severity === "critical" ? "error" : "warning"}</span>
+                      <span style="color:var(--text-secondary)">${a.message}</span>
+                    </div>
+                  `).join("")}
+                </div>
+              ` : ""}
+            </div>
+          `;
+        }).join("")}
+      </div>
+
+      <!-- 범례 -->
+      <div class="card" style="padding:12px">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;align-items:center">
+          <span style="font-weight:600">위험도:</span>
+          ${[
+            { level: 0, text: "안전", color: "#4ade80" },
+            { level: 1, text: "관심", color: "#60a5fa" },
+            { level: 2, text: "주의", color: "#fbbf24" },
+            { level: 3, text: "경고", color: "#fb923c" },
+            { level: 4, text: "위험", color: "#f87171" },
+          ].map((r) => `<span style="display:flex;align-items:center;gap:3px"><span style="width:10px;height:10px;border-radius:50%;background:${r.color}"></span>${r.text}</span>`).join("")}
+          <span style="margin-left:auto;color:var(--text-muted)">갱신: 실시간 (Open-Meteo)</span>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    content.innerHTML = `<div style="color:var(--accent-red);text-align:center;padding:40px">${err.message}</div>`;
+  }
+}
+
 // ============ ONTOLOGY (골프장 온톨로지) ============
 
 function initOntologyView() {

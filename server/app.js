@@ -69,6 +69,7 @@ app.use("/api/versions", versionRoutes);
 app.use("/api/zones", zoneRoutes);
 app.use("/api/terrain", terrainRoutes);
 app.use("/api/email", emailReportRoutes);
+app.use("/api/gop-safety", require("./routes/gopSafety"));
 
 // Platform configuration endpoint (위성 인증 상태)
 app.get("/api/config", (req, res) => {

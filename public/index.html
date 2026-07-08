@@ -807,6 +807,16 @@
           </label>
         </div>
       </div>
+      <!-- 안전 예측 / 위성 감시 탭 -->
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="btn btn-sm" id="dmzTabSat" onclick="switchDMZTab('sat')" style="flex:1;justify-content:center;background:var(--accent-green);color:#0f1117">
+          <span class="material-icons-outlined">satellite_alt</span> 위성 감시
+        </button>
+        <button class="btn btn-sm btn-secondary" id="dmzTabSafety" onclick="switchDMZTab('safety')" style="flex:1;justify-content:center">
+          <span class="material-icons-outlined">health_and_safety</span> 장병 안전 예측
+        </button>
+      </div>
+      <div id="dmzSafetyContent" style="display:none"></div>
       <div id="dmzContent">
         <!-- 6개월 비교 그리드 -->
         <div class="card" style="margin-bottom:16px;padding:14px 16px">
