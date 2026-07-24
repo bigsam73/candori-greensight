@@ -5302,28 +5302,142 @@ function renderDMZFullMap(regionInfo, satSource, months) {
 
 // ============ DMZ TAB SWITCH ============
 window.switchDMZTab = function (tab) {
-  const satContent = document.getElementById("dmzContent");
-  const safetyContent = document.getElementById("dmzSafetyContent");
-  const tabSat = document.getElementById("dmzTabSat");
-  const tabSafety = document.getElementById("dmzTabSafety");
+  const tabs = ["sat", "sar", "safety"];
+  const contents = { sat: "dmzContent", sar: "dmzSARContent", safety: "dmzSafetyContent" };
+  const buttons = { sat: "dmzTabSat", sar: "dmzTabSAR", safety: "dmzTabSafety" };
 
-  if (tab === "safety") {
-    satContent.style.display = "none";
-    safetyContent.style.display = "block";
-    tabSat.className = "btn btn-sm btn-secondary";
-    tabSat.style.background = ""; tabSat.style.color = "";
-    tabSafety.className = "btn btn-sm";
-    tabSafety.style.background = "var(--accent-green)"; tabSafety.style.color = "#0f1117";
-    loadGOPSafety();
-  } else {
-    satContent.style.display = "block";
-    safetyContent.style.display = "none";
-    tabSafety.className = "btn btn-sm btn-secondary";
-    tabSafety.style.background = ""; tabSafety.style.color = "";
-    tabSat.className = "btn btn-sm";
-    tabSat.style.background = "var(--accent-green)"; tabSat.style.color = "#0f1117";
-  }
+  tabs.forEach((t) => {
+    const el = document.getElementById(contents[t]);
+    const btn = document.getElementById(buttons[t]);
+    if (el) el.style.display = t === tab ? "block" : "none";
+    if (btn) {
+      if (t === tab) {
+        btn.className = "btn btn-sm";
+        btn.style.background = "var(--accent-green)"; btn.style.color = "#0f1117";
+      } else {
+        btn.className = "btn btn-sm btn-secondary";
+        btn.style.background = ""; btn.style.color = "";
+      }
+    }
+  });
+
+  if (tab === "safety") loadGOPSafety();
+  if (tab === "sar") loadDMZSAR();
 };
+
+async function loadDMZSAR() {
+  const content = document.getElementById("dmzSARContent");
+  content.innerHTML = '<div class="loading"><div class="spinner"></div> Sentinel-1 SAR 데이터 조회 중...</div>';
+
+  try {
+    const result = await API.get("/api/sar/dmz-catalog?days=30");
+    if (!result.ok) throw new Error("SAR 카탈로그 조회 실패");
+
+    const nightObs = result.products.filter((p) => p.isNight);
+    const dayObs = result.products.filter((p) => !p.isNight);
+
+    content.innerHTML = `
+      <!-- SAR 개요 -->
+      <div class="card" style="margin-bottom:16px;padding:16px;border-left:4px solid var(--accent-blue)">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="material-icons-outlined" style="font-size:36px;color:var(--accent-blue)">radar</span>
+          <div>
+            <div style="font-size:16px;font-weight:700">Sentinel-1 SAR (C-band) DMZ 관측</div>
+            <div style="font-size:12px;color:var(--text-muted)">전천후 관측 | 야간 관측 | 구름 무관 | 5x20m 해상도 | ${result.period.from} ~ ${result.period.to}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 요약 카드 -->
+      <div class="summary-cards" style="margin-bottom:16px">
+        <div class="card summary-card">
+          <div class="card-icon blue"><span class="material-icons-outlined">satellite_alt</span></div>
+          <div class="card-info">
+            <div class="card-value">${result.count}</div>
+            <div class="card-label">총 SAR 관측 (30일)</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon purple"><span class="material-icons-outlined">dark_mode</span></div>
+          <div class="card-info">
+            <div class="card-value">${nightObs.length}</div>
+            <div class="card-label">야간 관측</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon orange"><span class="material-icons-outlined">light_mode</span></div>
+          <div class="card-info">
+            <div class="card-value">${dayObs.length}</div>
+            <div class="card-label">주간 관측</div>
+          </div>
+        </div>
+        <div class="card summary-card">
+          <div class="card-icon green"><span class="material-icons-outlined">schedule</span></div>
+          <div class="card-info">
+            <div class="card-value">~${Math.round(30 / (result.count || 1))}일</div>
+            <div class="card-label">평균 관측 주기</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SAR 활용 분야 -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header"><h3>DMZ SAR 활용</h3></div>
+        <div style="padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px">
+          ${[
+            { icon: "dark_mode", title: "야간 활동 감지", desc: "야간 건설/이동 탐지 (광학 불가)", color: "#a78bfa" },
+            { icon: "cloud", title: "전천후 관측", desc: "장마/구름 시 유일한 관측 수단", color: "#60a5fa" },
+            { icon: "water_drop", title: "토양수분 변화", desc: "철책 공사 지역 토양 교란 감지", color: "#2dd4bf" },
+            { icon: "construction", title: "지형 변화 감지", desc: "요새화 공사, 참호 굴착 탐지", color: "#fb923c" },
+            { icon: "terrain", title: "InSAR 지반 변위", desc: "mm 단위 지반 변형 감지", color: "#f87171" },
+            { icon: "forest", title: "불모지 작업 감지", desc: "MDL 인근 식생 제거 탐지", color: "#4ade80" },
+          ].map((item) => `
+            <div style="padding:12px;background:var(--bg-primary);border-radius:8px;border:1px solid var(--border-color)">
+              <span class="material-icons-outlined" style="font-size:24px;color:${item.color};display:block;margin-bottom:4px">${item.icon}</span>
+              <div style="font-size:12px;font-weight:600">${item.title}</div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${item.desc}</div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+
+      <!-- 관측 이력 -->
+      <div class="card">
+        <div class="card-header"><h3>최근 30일 SAR 관측 이력</h3></div>
+        <div style="padding:12px;max-height:400px;overflow-y:auto">
+          <table class="report-table" style="font-size:11px">
+            <thead><tr><th>날짜/시각</th><th>위성</th><th>주/야</th><th>모드</th><th>DMZ 활용</th></tr></thead>
+            <tbody>
+              ${result.products.map((p) => `
+                <tr>
+                  <td style="font-weight:500">${p.date.replace("T", " ")}</td>
+                  <td>${p.satellite}</td>
+                  <td style="color:${p.isNight ? "#a78bfa" : "#fb923c"}">
+                    <span class="material-icons-outlined" style="font-size:14px;vertical-align:middle">${p.isNight ? "dark_mode" : "light_mode"}</span>
+                    ${p.isNight ? "야간" : "주간"}
+                  </td>
+                  <td>${p.mode}</td>
+                  <td style="font-size:10px;color:var(--text-muted)">${p.isNight ? "야간 활동/건설 감지" : "토양수분/지형변화"}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 안내 -->
+      <div class="card" style="margin-top:16px;padding:14px;border-left:4px solid var(--accent-orange)">
+        <div style="font-size:12px;color:var(--text-secondary)">
+          <span class="material-icons-outlined" style="font-size:16px;vertical-align:middle;color:var(--accent-orange)">info</span>
+          <b>SAR 영상 렌더링</b>: 실제 SAR 영상을 지도에 표시하려면 Sentinel Hub 계정(무료)이 필요합니다.
+          현재는 관측 카탈로그와 메타데이터를 표시합니다. Sentinel Hub OAuth Client ID/Secret을 .env에 설정하면 실제 SAR 영상(VV/VH 후방산란)이 지도에 오버레이됩니다.
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    content.innerHTML = `<div style="color:var(--accent-red);text-align:center;padding:40px">${err.message}</div>`;
+  }
+}
 
 async function loadGOPSafety() {
   const content = document.getElementById("dmzSafetyContent");

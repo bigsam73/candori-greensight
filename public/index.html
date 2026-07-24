@@ -807,15 +807,19 @@
           </label>
         </div>
       </div>
-      <!-- 안전 예측 / 위성 감시 탭 -->
-      <div style="display:flex;gap:8px;margin-bottom:16px">
+      <!-- 위성감시 / SAR / 안전예측 탭 -->
+      <div style="display:flex;gap:6px;margin-bottom:16px">
         <button class="btn btn-sm" id="dmzTabSat" onclick="switchDMZTab('sat')" style="flex:1;justify-content:center;background:var(--accent-green);color:#0f1117">
-          <span class="material-icons-outlined">satellite_alt</span> 위성 감시
+          <span class="material-icons-outlined">satellite_alt</span> 광학 위성
+        </button>
+        <button class="btn btn-sm btn-secondary" id="dmzTabSAR" onclick="switchDMZTab('sar')" style="flex:1;justify-content:center">
+          <span class="material-icons-outlined">radar</span> SAR 야간/전천후
         </button>
         <button class="btn btn-sm btn-secondary" id="dmzTabSafety" onclick="switchDMZTab('safety')" style="flex:1;justify-content:center">
-          <span class="material-icons-outlined">health_and_safety</span> 장병 안전 예측
+          <span class="material-icons-outlined">health_and_safety</span> 장병 안전
         </button>
       </div>
+      <div id="dmzSARContent" style="display:none"></div>
       <div id="dmzSafetyContent" style="display:none"></div>
       <div id="dmzContent">
         <!-- 6개월 비교 그리드 -->

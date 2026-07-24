@@ -71,6 +71,38 @@ app.use("/api/terrain", terrainRoutes);
 app.use("/api/email", emailReportRoutes);
 app.use("/api/gop-safety", require("./routes/gopSafety"));
 
+// Sentinel-1 SAR DMZ 카탈로그 검색
+app.get("/api/sar/dmz-catalog", async (req, res) => {
+  const { days = 30 } = req.query;
+  const axios = require("axios");
+  try {
+    const dateTo = new Date().toISOString().split("T")[0];
+    const dateFrom = new Date(Date.now() - parseInt(days) * 86400000).toISOString().split("T")[0];
+    const filter = `Collection/Name eq 'SENTINEL-1' and contains(Name,'IW_GRD') and ContentDate/Start gt ${dateFrom}T00:00:00.000Z and ContentDate/Start lt ${dateTo}T23:59:59.999Z and OData.CSC.Intersects(area=geography'SRID=4326;POLYGON((126 37.5,129 37.5,129 39,126 39,126 37.5))')`;
+    const r = await axios.get("https://catalogue.dataspace.copernicus.eu/odata/v1/Products", {
+      params: { $filter: filter, $top: 30, $orderby: "ContentDate/Start desc" },
+      timeout: 15000,
+    });
+    const products = (r.data.value || []).map((p) => ({
+      name: p.Name,
+      date: p.ContentDate?.Start?.substring(0, 19),
+      satellite: p.Name?.substring(0, 3) === "S1C" ? "Sentinel-1C" : p.Name?.substring(0, 3) === "S1D" ? "Sentinel-1D" : "Sentinel-1",
+      mode: "IW GRD",
+      isNight: parseInt(p.ContentDate?.Start?.substring(11, 13) || "0") >= 18 || parseInt(p.ContentDate?.Start?.substring(11, 13) || "0") <= 6,
+    }));
+    // 중복 제거 (같은 시각 다른 처리)
+    const unique = [];
+    const seen = new Set();
+    products.forEach((p) => {
+      const key = p.date;
+      if (!seen.has(key)) { seen.add(key); unique.push(p); }
+    });
+    res.json({ ok: true, count: unique.length, period: { from: dateFrom, to: dateTo }, products: unique });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Platform configuration endpoint (위성 인증 상태)
 app.get("/api/config", (req, res) => {
   const psStatus = satelliteService.getPlanetScopeStatus();
